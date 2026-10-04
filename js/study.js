@@ -199,12 +199,14 @@ window.Study = (function () {
       const others = quiz.queue.filter((x) => x.id !== w.id).slice(0, 3).map((x) => x.meaning);
       const options = [w.meaning].concat(others).sort(() => Math.random() - 0.5);
       const optWrap = U.el('div', { class: 'quiz-options' });
+      const fb = U.el('div', { style: 'margin-top:10px' });
       options.forEach((opt) => {
         const btn = U.el('button', { class: 'quiz-opt', text: opt });
-        btn.addEventListener('click', () => answerQuiz(w, opt === w.meaning, btn, optWrap));
+        btn.addEventListener('click', () => answerQuiz(w, opt === w.meaning, btn, optWrap, fb));
         optWrap.appendChild(btn);
       });
       card.appendChild(optWrap);
+      card.appendChild(fb);
       card.appendChild(U.el('div', { class: 'row gap', style: 'margin-top:12px' }, [
         U.el('button', { class: 'btn small', text: '🔊 استماع', onclick: () => TTS.speak(w.text) })
       ]));

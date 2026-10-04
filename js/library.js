@@ -45,8 +45,11 @@ window.Library = (function () {
     if (!grid) return;
     const q = (document.getElementById('lib-search').value || '').trim().toLowerCase();
     let files = await DB.all('files');
+    const total = files.length;
     files = files.filter((f) => !q || f.name.toLowerCase().indexOf(q) >= 0);
     files.sort((a, b) => (b.lastOpened || b.addedAt || 0) - (a.lastOpened || a.addedAt || 0));
+    const hero = document.getElementById('start-hero');
+    if (hero) hero.classList.toggle('hidden', total > 0);
     grid.innerHTML = '';
     if (!files.length) {
       grid.appendChild(U.el('div', { class: 'empty', text: q ? 'لا نتائج للبحث.' : 'لا توجد ملفات بعد — ارفع أول ملف من الأعلى ☝️' }));
@@ -129,6 +132,8 @@ window.Library = (function () {
     const dz = document.getElementById('dropzone');
     const input = document.getElementById('file-input');
     const search = document.getElementById('lib-search');
+    const heroBtn = document.getElementById('hero-upload');
+    if (heroBtn && input) heroBtn.addEventListener('click', () => input.click());
     if (dz && input) {
       dz.addEventListener('click', (e) => { if (e.target === input) return; input.click(); });
       input.addEventListener('change', () => { handleUpload(input.files); input.value = ''; });

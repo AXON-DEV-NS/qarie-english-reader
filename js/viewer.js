@@ -6,7 +6,6 @@ window.Viewer = (function () {
   const STANDARD_FONTS_URL = PDF_BASE + 'standard_fonts/';
   const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'];
   const PAGE_GAP = 14;
-  const TESS = { worker: null, promise: null };
 
   const st = {
     file: null,
@@ -35,10 +34,6 @@ window.Viewer = (function () {
 
   function g(id) { return document.getElementById(id); }
   function scrollEl() { return g('reader-scroll'); }
-  function fileOcr(key) {
-    if (!st.file || !st.file.ocr) return null;
-    return st.file.ocr[String(key)] || null;
-  }
   function pdfQuality() { return U.clamp(Math.max(window.devicePixelRatio || 1, 2), 2, 3); }
 
   function setProgress(pct, show) {
@@ -144,11 +139,9 @@ window.Viewer = (function () {
     const pager = g('rt-pager');
     const zoomIn = g('rt-zoom-in');
     const zoomOut = g('rt-zoom-out');
-    const ocr = g('rt-ocr');
     if (pager) pager.classList.toggle('hidden', !(isPdf || isEpub));
     if (zoomIn) zoomIn.classList.toggle('hidden', !isPdf);
     if (zoomOut) zoomOut.classList.toggle('hidden', !isPdf);
-    if (ocr) ocr.classList.toggle('hidden', !(isPdf || isImageExt(st.ext)));
     updatePageLabel();
   }
 
@@ -252,17 +245,17 @@ window.Viewer = (function () {
     if (cur !== st.pdfCurrent) {
       st.pdfCurrent = cur;
       updatePageLabel();
-      updateOcrHint();
+      updateEmptyHint();
       setProgress(progressPercent(currentLocation()), true);
       scheduleSave();
     }
   }
 
-  function updateOcrHint() {
+  function updateEmptyHint() {
     if (st.ext !== 'pdf' || !st.pdf) return;
     const e = st.pdfPages[st.pdfCurrent - 1];
-    if (e && e.rendered && e.empty && !fileOcr(e.num)) {
-      showHint('📷 هذه الصفحة صورة بلا نص — اضغط <strong>OCR</strong> لتحويلها إلى نص قابل للتحديد.');
+    if (e && e.rendered && e.empty) {
+      showHint('🖼️ هذا الملف عبارة عن صور ولا يمكن تحديد كلمات منه — استخدم نسخة PDF تحتوي نصاً.');
     } else {
       showHint('');
     }
@@ -303,31 +296,25 @@ window.Viewer = (function () {
       tl.style.width = Math.floor(vp.width) + 'px';
       tl.style.height = Math.floor(vp.height) + 'px';
       tl.style.setProperty('--scale-factor', String(st.pdfScale));
-      const ocr = fileOcr(e.num);
-      if (ocr) {
-        renderOcrOverlayOn(tl, ocr, st.pdfScale, e.w, e.h);
-        e.empty = false;
-      } else {
-        let hasText = false;
-        const tc = await page.getTextContent();
-        if (token !== e.renderToken) return;
-        hasText = !!(tc.items && tc.items.some((it) => it.str && it.str.trim()));
-        try {
-          const task = window.pdfjsLib.renderTextLayer({
-            textContent: tc,
-            textContentSource: tc,
-            container: tl,
-            viewport: vp,
-            textDivs: []
-          });
-          if (task && task.promise) await task.promise;
-        } catch (err) { if (!/cancel/i.test((err && err.name) || '')) console.warn(err); }
-        e.empty = !hasText;
-        if (st.hlEnabled) applyHighlights(tl);
-      }
+      let hasText = false;
+      const tc = await page.getTextContent();
+      if (token !== e.renderToken) return;
+      hasText = !!(tc.items && tc.items.some((it) => it.str && it.str.trim()));
+      try {
+        const task = window.pdfjsLib.renderTextLayer({
+          textContent: tc,
+          textContentSource: tc,
+          container: tl,
+          viewport: vp,
+          textDivs: []
+        });
+        if (task && task.promise) await task.promise;
+      } catch (err) { if (!/cancel/i.test((err && err.name) || '')) console.warn(err); }
+      e.empty = !hasText;
+      if (st.hlEnabled) applyHighlights(tl);
       if (token !== e.renderToken) return;
       e.rendered = true;
-      if (st.pdfCurrent === e.num) updateOcrHint();
+      if (st.pdfCurrent === e.num) updateEmptyHint();
     } catch (err) {
       if (!/cancel/i.test((err && err.name) || '')) console.warn('render page', e.num, err);
     } finally {
@@ -407,148 +394,6 @@ window.Viewer = (function () {
     scheduleSave();
   }
 
-  function renderOcrOverlayOn(tl, rec, cssScale, pageW, pageH) {
-    tl.innerHTML = '';
-    const scale = rec.scale || 2;
-    const ratio = cssScale / scale;
-    tl.style.width = Math.floor(pageW) + 'px';
-    tl.style.height = Math.floor(pageH) + 'px';
-    (rec.words || []).forEach((wd) => {
-      const b = wd.bbox;
-      if (!b || !wd.text || !wd.text.trim()) return;
-      const span = U.el('span', { text: wd.text });
-      span.style.position = 'absolute';
-      span.style.left = Math.floor(b.x0 * ratio) + 'px';
-      span.style.top = Math.floor(b.y0 * ratio) + 'px';
-      span.style.width = Math.max(4, Math.floor((b.x1 - b.x0) * ratio)) + 'px';
-      span.style.height = Math.max(4, Math.floor((b.y1 - b.y0) * ratio)) + 'px';
-      span.style.fontSize = Math.max(6, (b.y1 - b.y0) * ratio * 0.85) + 'px';
-      span.style.whiteSpace = 'pre';
-      span.style.overflow = 'hidden';
-      tl.appendChild(span);
-    });
-  }
-
-  async function getTess() {
-    if (TESS.worker) return TESS.worker;
-    if (TESS.promise) return TESS.promise;
-    if (!window.Tesseract) throw new Error('تعذّر تحميل محرّك OCR');
-    TESS.promise = window.Tesseract.createWorker('eng', 1, {
-      logger: (m) => {
-        if (m && m.status === 'recognizing text') setProgress((m.progress || 0) * 100, true);
-      }
-    }).then((w) => { TESS.worker = w; return w; }).catch((e) => { TESS.promise = null; throw e; });
-    return TESS.promise;
-  }
-
-  function wordsFromTesseract(data) {
-    const out = [];
-    const push = (w) => {
-      if (!w || !w.text || !w.text.trim() || !w.bbox) return;
-      out.push({ text: w.text, bbox: w.bbox });
-    };
-    if (data && Array.isArray(data.words) && data.words.length) {
-      data.words.forEach(push);
-      return out;
-    }
-    if (data && Array.isArray(data.blocks)) {
-      data.blocks.forEach((b) => (b.paragraphs || []).forEach((p) => (p.lines || []).forEach((l) => (l.words || []).forEach(push))));
-      return out;
-    }
-    if (data && data.tsv) {
-      String(data.tsv).split('\n').forEach((line) => {
-        const c = line.split('\t');
-        if (c.length >= 12 && c[0] === '5') {
-          push({ text: c[11] || '', bbox: { x0: +c[6], y0: +c[7], x1: +c[6] + +c[8], y1: +c[7] + +c[9] } });
-        }
-      });
-    }
-    return out;
-  }
-
-  async function runOcr() {
-    if (!st.file) return;
-    if (st.ext === 'pdf' && st.pdf) return runOcrPage(st.pdfCurrent);
-    if (isImageExt(st.ext) && st.img) return runOcrImage();
-    U.toast('لا يوجد ما يُعالج في هذا النوع', 'warn');
-  }
-
-  async function runOcrPage(n) {
-    const e = st.pdfPages[n - 1];
-    if (!e) return;
-    setProgress(0, true);
-    showHint('⏳ جارٍ التعرف الضوئي على الصفحة…');
-    try {
-      const page = await st.pdf.getPage(n);
-      const scale = 2;
-      const vp = page.getViewport({ scale: scale });
-      const cv = document.createElement('canvas');
-      cv.width = Math.max(1, Math.floor(vp.width));
-      cv.height = Math.max(1, Math.floor(vp.height));
-      await page.render({ canvasContext: cv.getContext('2d', { alpha: false }), viewport: vp }).promise;
-      const worker = await getTess();
-      const res = await worker.recognize(cv);
-      const data = res.data || {};
-      const words = wordsFromTesseract(data);
-      st.file.ocr = st.file.ocr || {};
-      st.file.ocr[String(n)] = { text: data.text || '', words: words, scale: scale };
-      st.file.hasText = true;
-      st.file.updatedAt = Date.now();
-      await DB.put('files', st.file);
-      DB.changed();
-      U.toast('تم تحويل الصفحة إلى نص قابل للتحديد ✓', 'ok');
-      renderOcrOverlayOn(e.textLayer, st.file.ocr[String(n)], st.pdfScale, e.w, e.h);
-      e.empty = false;
-      if (st.hlEnabled) applyHighlights(e.textLayer);
-      updateOcrHint();
-    } catch (err) {
-      console.error(err);
-      U.toast('تعذّر OCR: ' + (err.message || err), 'error');
-      updateOcrHint();
-    } finally {
-      setProgress(0, false);
-    }
-  }
-
-  function renderImageOcr(rec) {
-    const tl = st.textLayer;
-    const img = st.img;
-    if (!tl || !img || !img.clientWidth) return;
-    const displayW = img.clientWidth;
-    const displayH = img.clientHeight;
-    const scale = rec.scale || 1;
-    tl.style.width = displayW + 'px';
-    tl.style.height = displayH + 'px';
-    renderOcrOverlayOn(tl, rec, (displayW / (rec.w || displayW)) * scale, displayW, displayH);
-  }
-
-  async function runOcrImage() {
-    setProgress(0, true);
-    try {
-      const worker = await getTess();
-      const res = await worker.recognize(st.img);
-      const data = res.data || {};
-      const words = wordsFromTesseract(data);
-      const rec = {
-        text: data.text || '', words: words, scale: 1,
-        w: st.imgNat ? st.imgNat.w : st.img.naturalWidth,
-        h: st.imgNat ? st.imgNat.h : st.img.naturalHeight
-      };
-      st.file.ocr = st.file.ocr || {};
-      st.file.ocr['1'] = rec;
-      st.file.hasText = true;
-      st.file.updatedAt = Date.now();
-      await DB.put('files', st.file);
-      DB.changed();
-      U.toast('تم تحويل الصورة إلى نص قابل للتحديد ✓', 'ok');
-      renderImageOcr(rec);
-    } catch (err) {
-      console.error(err);
-      U.toast('تعذّر OCR: ' + (err.message || err), 'error');
-    } finally {
-      setProgress(0, false);
-    }
-  }
 
   async function openDocx(file, loc) {
     const buf = await blobToArrayBuffer(file.blob);
@@ -587,9 +432,11 @@ window.Viewer = (function () {
 
   function buildTxtView(text) {
     const div = U.el('div', { class: 'txt-view' });
-    String(text || '').split(/\r?\n\s*\r?\n/).forEach((par) => {
-      const t = par.trim();
-      if (!t) return;
+    let blocks = String(text || '').split(/\r?\n\s*\r?\n/).map((s) => s.trim()).filter(Boolean);
+    if (blocks.length <= 1) {
+      blocks = String(text || '').split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    }
+    blocks.forEach((t) => {
       div.appendChild(U.el('p', { class: 'text-block', text: t }));
     });
     return div;
@@ -682,8 +529,7 @@ window.Viewer = (function () {
       else { img.onload = resolve; img.onerror = resolve; }
     });
     st.imgNat = { w: img.naturalWidth, h: img.naturalHeight };
-    const savedOcr = fileOcr('1');
-    if (savedOcr) renderImageOcr(savedOcr);
+    showHint('🖼️ هذا الملف عبارة عن صور ولا يمكن تحديد كلمات منه — ارفع ملف PDF يحتوي نصاً.');
     if (loc && loc.scroll) scrollEl().scrollTop = loc.scroll;
   }
 
@@ -821,7 +667,7 @@ window.Viewer = (function () {
       if (!st.container || !st.container.contains(range.commonAncestorContainer)) return;
       const rect = range.getBoundingClientRect();
       emit(text, { left: rect.left, top: rect.top, width: rect.width, height: rect.height, bottom: rect.bottom });
-    }, 420));
+    }, 250));
     c.addEventListener('click', (e) => {
       const mark = e.target && e.target.closest ? e.target.closest('mark.hl') : null;
       if (!mark) return;
@@ -1023,7 +869,7 @@ window.Viewer = (function () {
   function currentFile() { return st.file; }
 
   return {
-    open, close, goTo, goToPage, nextPage, prevPage, zoomBy, runOcr,
+    open, close, goTo, goToPage, nextPage, prevPage, zoomBy,
     applyHighlights, toggleHighlights, getContext, currentLocation, saveProgress,
     currentFile, getState, updateToolbar
   };

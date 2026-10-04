@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>قارئي — تعلّم الإنجليزية من ملفاتك</title>
-<meta name="description" content="ارفع أي ملف PDF أو Word أو TXT أو EPUB أو صورة، اقرأه وحدّد أي كلمة أو جملة لترجمتها ونطقها وحفظها مع مراجعة ذكية.">
-<meta name="theme-color" content="#0d9488">
+<meta name="description" content="ارفع أي ملف PDF أو Word أو TXT أو EPUB، اقرأه بشكله الأصلي، وحدّد أي كلمة أو جملة لترجمتها ونطقها وحفظها مع مراجعة ذكية.">
+<meta name="theme-color" content="#2563eb">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -13,18 +13,22 @@
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-<link rel="stylesheet" href="css/styles.css?v=2">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css?v=4">
 </head>
 <body>
 <div id="app">
 
   <header id="topbar">
-    <button id="menu-btn" class="icon-btn only-tablet" title="القائمة" aria-label="القائمة">☰</button>
+    <button id="menu-btn" class="btn small only-tablet" title="القائمة">☰ القائمة</button>
     <h1 id="page-title">مكتبتي</h1>
     <div class="spacer"></div>
     <button id="continue-btn" class="btn small hidden" title="متابعة القراءة">📖 متابعة</button>
     <span id="streak-chip" class="chip" title="أيام التعلّم المتتالية">🔥 0</span>
-    <button id="theme-btn" class="icon-btn" title="تبديل الوضع الليلي">🌙</button>
+    <button id="theme-btn" class="btn small" title="تبديل الوضع الليلي">🌙 ليلي</button>
+    <button id="topbar-settings" class="btn small" title="الإعدادات">⚙️ الإعدادات</button>
   </header>
 
   <aside id="sidebar">
@@ -34,7 +38,8 @@
     </div>
     <nav class="side-nav">
       <a class="side-link" href="#/library" data-nav="library"><span class="ic">📚</span><span class="lbl">مكتبتي</span></a>
-      <a class="side-link" href="#/dictionary" data-nav="dictionary"><span class="ic">📖</span><span class="lbl">قاموسي</span></a>
+      <a class="side-link" href="#/reader" data-nav="reader"><span class="ic">📖</span><span class="lbl">القارئ</span></a>
+      <a class="side-link" href="#/dictionary" data-nav="dictionary"><span class="ic">📕</span><span class="lbl">قاموسي</span></a>
       <a class="side-link" href="#/study" data-nav="study"><span class="ic">🃏</span><span class="lbl">بطاقات المراجعة</span></a>
       <a class="side-link" href="#/quiz" data-nav="quiz"><span class="ic">❓</span><span class="lbl">اختبارات</span></a>
       <a class="side-link" href="#/stats" data-nav="stats"><span class="ic">📈</span><span class="lbl">تقدّمي</span></a>
@@ -49,13 +54,26 @@
   <main id="main">
 
     <section id="view-library" class="view active">
+      <div id="start-hero" class="start-hero hidden">
+        <div class="hero-icon">📘</div>
+        <h2>تعلّم الإنجليزية من أي ملف</h2>
+        <p class="lead">ارفع ملفك، اقرأه بشكله الأصلي، وحدّد أي كلمة أو جملة لتسمعها وتحفظها.</p>
+        <button class="btn primary hero-btn" id="hero-upload">📤 ارفع ملفك الآن</button>
+        <div class="steps">
+          <div class="step"><span class="step-num">1</span><div><strong>ارفع الملف</strong><br><span class="muted small">PDF · Word · TXT · EPUB</span></div></div>
+          <div class="step"><span class="step-num">2</span><div><strong>حدّد كلمة أو جملة</strong><br><span class="muted small">بالماوس أو بالإصبع</span></div></div>
+          <div class="step"><span class="step-num">3</span><div><strong>استمع واحفظ ⭐</strong><br><span class="muted small">ثم راجع ببطاقات ذكية</span></div></div>
+        </div>
+        <button class="btn small" id="hero-help">❓ كيف يعمل الموقع؟</button>
+      </div>
+
       <div class="view-head">
         <h2>مكتبتي</h2>
         <p class="muted">ارفع ملفاتك وابدأ القراءة، وحدّد أي كلمة أو جملة لشرحها وحفظها.</p>
       </div>
       <div id="dropzone" class="dropzone">
-        <div class="dz-icon">📄</div>
-        <p><strong>اسحب الملفات هنا</strong> أو اضغط للاختيار</p>
+        <div class="dz-icon">📤</div>
+        <p><strong>ارفع ملفك</strong> — اسحب الملفات هنا أو اضغط للاختيار</p>
         <p class="muted small">PDF · DOCX · DOC · TXT · EPUB · صور (PNG/JPG)</p>
         <input type="file" id="file-input" multiple accept=".pdf,.doc,.docx,.txt,.epub,.png,.jpg,.jpeg,.webp,.gif,.bmp,application/pdf,image/*" hidden>
       </div>
@@ -68,30 +86,28 @@
 
     <section id="view-reader" class="view">
       <div id="reader-toolbar" class="reader-toolbar">
-        <button class="icon-btn" id="rt-back" title="عودة للمكتبة">↩</button>
+        <button class="btn small" id="rt-back" title="عودة للمكتبة">↩ رجوع</button>
         <span id="reader-title" class="reader-title">—</span>
         <div class="spacer"></div>
         <div class="tool-group" id="rt-pager">
-          <button class="icon-btn" id="rt-prev" title="السابق">‹</button>
+          <button class="btn small" id="rt-prev" title="الصفحة السابقة">السابق</button>
           <span id="rt-page" class="page-ind">— / —</span>
           <input id="rt-jump" class="page-input hidden" type="number" min="1" inputmode="numeric" placeholder="صفحة" title="انتقل إلى صفحة">
-          <button class="icon-btn hidden" id="rt-go" title="الانتقال إلى الصفحة">↦</button>
-          <button class="icon-btn" id="rt-next" title="التالي">›</button>
+          <button class="btn small hidden" id="rt-go" title="الانتقال إلى الصفحة">انتقال</button>
+          <button class="btn small" id="rt-next" title="الصفحة التالية">التالي</button>
         </div>
-        <div class="tool-group">
-          <button class="icon-btn" id="rt-zoom-out" title="تصغير">−</button>
-          <button class="icon-btn" id="rt-zoom-in" title="تكبير">+</button>
-        </div>
-        <button class="btn small hidden" id="rt-ocr" title="تحويل الصفحة المصوّرة إلى نص">🔍 OCR</button>
+        <button class="btn small" id="rt-zoom-out" title="تصغير الصفحة">− تصغير</button>
+        <button class="btn small" id="rt-zoom-in" title="تكبير الصفحة">+ تكبير</button>
         <button class="btn small primary" id="rt-highlight" title="إبراز الكلمات المحفوظة">🖍️ الإبراز</button>
       </div>
+      <div id="reader-tip" class="reader-tip">👆 حدد أي كلمة أو جملة لتعرف معناها، ثم استمع واحفظ ⭐</div>
       <div id="reader-hint" class="hint hidden"></div>
       <div id="reader-progress" class="reader-progress hidden"><div id="reader-progress-bar"></div></div>
       <div id="reader-scroll" class="reader-scroll">
         <div id="viewer-container" class="viewer-container"></div>
         <div id="reader-empty" class="empty big">
           <p>لا يوجد ملف مفتوح حالياً.</p>
-          <a class="btn primary" href="#/library">اذهب إلى مكتبتي</a>
+          <a class="btn primary" href="#/library">📚 اذهب إلى مكتبتي</a>
         </div>
       </div>
     </section>
@@ -137,7 +153,7 @@
       </div>
       <div class="row wrap gap">
         <button class="btn primary" id="btn-review-due">🃏 مراجعة المستحق <span id="due-count" class="chip"></span></button>
-        <button class="btn" id="btn-review-all">مراجعة كل الكلمات</button>
+        <button class="btn" id="btn-review-all">📚 مراجعة كل الكلمات</button>
       </div>
       <div id="study-area" class="study-area"></div>
     </section>
@@ -184,62 +200,90 @@
       </div>
 
       <div class="card">
-        <h3>المظهر والصوت</h3>
+        <h3>🎨 المظهر</h3>
         <div class="field"><label for="set-theme">الوضع</label>
-          <select id="set-theme" class="input"><option value="auto">تلقائي</option><option value="light">نهاري</option><option value="dark">ليلي</option></select></div>
-        <div class="field"><label for="set-accent">اللهجة</label>
-          <select id="set-accent" class="input"><option value="en-US">أمريكية 🇺🇸</option><option value="en-GB">بريطانية 🇬🇧</option></select></div>
-        <div class="field"><label for="set-rate">السرعة الافتراضية</label>
-          <select id="set-rate" class="input"><option value="0.5">0.5x</option><option value="0.75">0.75x</option><option value="1">1x</option></select></div>
+          <select id="set-theme" class="input"><option value="light">نهاري (فاتح)</option><option value="dark">ليلي</option></select></div>
         <div class="field"><label for="set-font">حجم خط القارئ</label>
           <input type="range" id="set-font" min="80" max="160" step="10"></div>
+      </div>
+
+      <div class="card">
+        <h3>🔊 الصوت التعليمي</h3>
+        <div class="field"><label for="set-accent">اللهجة</label>
+          <select id="set-accent" class="input"><option value="en-US">أمريكية 🇺🇸</option><option value="en-GB">بريطانية 🇬🇧</option></select></div>
+        <div class="field"><label for="set-rate">سرعة الكلمات</label>
+          <select id="set-rate" class="input"><option value="0.5">0.5x — بطيء جداً</option><option value="0.75">0.75x — هادئ وواضح (موصى به)</option><option value="1">1x — عادي</option></select></div>
+        <div class="field"><label for="set-sent-rate">سرعة الجمل الطويلة</label>
+          <select id="set-sent-rate" class="input"><option value="0.6">0.6x — بطيء جداً</option><option value="0.8">0.8x — واضح (موصى به)</option><option value="1">1x — عادي</option></select></div>
+        <div class="field"><label for="set-volume">مستوى الصوت: <span id="vol-label">100%</span></label>
+          <input type="range" id="set-volume" min="0" max="100" step="5" value="100"></div>
         <label class="check"><input type="checkbox" id="set-autospeak"> نطق الكلمة تلقائياً عند تحديدها</label>
       </div>
 
       <div class="card">
-        <h3>الذكاء الاصطناعي (للشرح والترجمة)</h3>
-        <p class="muted small">بدون مفتاح يعمل الموقع بترجمة مجانية + قاموس محلي للكلمات المفردة.</p>
+        <h3>⭐ صوت عالي الجودة (اختياري)</h3>
+        <p class="muted small">إن لم تضف مفتاحاً، يعمل الموقع بأصوات المتصفح (Web Speech) وهي كافية.</p>
+        <div class="field"><label for="set-tts-provider">المزوّد</label>
+          <select id="set-tts-provider" class="input">
+            <option value="none">بدون — أصوات المتصفح</option>
+            <option value="openai">OpenAI TTS</option>
+            <option value="elevenlabs">ElevenLabs</option>
+          </select></div>
+        <div class="field"><label for="set-tts-key">مفتاح الخدمة</label>
+          <input id="set-tts-key" class="input ltr" type="password" placeholder="المفتاح..."></div>
+        <div class="field"><label for="set-tts-voice">الصوت (اسم أو ID)</label>
+          <input id="set-tts-voice" class="input ltr" placeholder="alloy / 21m00Tcm4TlvDq8ikWAM"></div>
+        <div class="row wrap gap">
+          <button class="btn small primary" id="btn-test-tts">🎧 اختبار الصوت</button>
+          <span id="tts-status" class="muted small"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>🤖 الذكاء الاصطناعي (للشرح والترجمة)</h3>
+        <p class="muted small">بدون مفتاح يعمل الموقع بترجمة مجانية + قاموس محلي. لا يُرسل أي نص إلا عند تحديدك.</p>
         <div class="field"><label for="set-provider">المزوّد</label>
           <select id="set-provider" class="input">
             <option value="none">بدون — مجاني فقط</option>
-            <option value="openai">متوافق مع OpenAI</option>
+            <option value="openai">متوافق مع OpenAI (يفتح OpenAI/OpenRouter/Groq)</option>
             <option value="gemini">Google Gemini</option>
+            <option value="anthropic">Anthropic Claude</option>
           </select></div>
         <div class="field"><label for="set-baseurl">رابط الخدمة</label>
           <input id="set-baseurl" class="input ltr" placeholder="https://api.openai.com/v1"></div>
-        <div class="field"><label for="set-model">الموديل</label>
-          <input id="set-model" class="input ltr" placeholder="gpt-4o-mini"></div>
+        <div class="field"><label for="set-model">الموديل (الأسرع أفضل)</label>
+          <input id="set-model" class="input ltr" placeholder="gpt-4o-mini / gemini-1.5-flash / claude-3-5-haiku-latest"></div>
         <div class="field"><label for="set-key">المفتاح API Key</label>
           <input id="set-key" class="input ltr" type="password" placeholder="sk-..."></div>
         <div class="row wrap gap">
-          <button class="btn primary" id="btn-test-ai">اختبار الاتصال</button>
+          <button class="btn primary" id="btn-test-ai">🔌 اختبار الاتصال</button>
           <span id="ai-status" class="muted small"></span>
         </div>
       </div>
 
       <div class="card">
-        <h3>المزامنة السحابية (اختياري — Supabase)</h3>
+        <h3>☁️ المزامنة السحابية (اختياري — Supabase)</h3>
         <p class="muted small">سجّل دخولك لتُحفظ كلماتك وملفاتك وتقدمك على كل أجهزتك. بدونها يعمل الموقع محلياً بالكامل.</p>
         <div class="field"><label for="set-sb-url">Supabase URL</label><input id="set-sb-url" class="input ltr" placeholder="https://xxxx.supabase.co"></div>
         <div class="field"><label for="set-sb-key">Supabase Anon Key</label><input id="set-sb-key" class="input ltr" placeholder="eyJ..."></div>
         <div class="field"><label for="sb-email">البريد الإلكتروني</label><input id="sb-email" class="input ltr" type="email" autocomplete="email"></div>
         <div class="field"><label for="sb-pass">كلمة المرور</label><input id="sb-pass" class="input ltr" type="password" autocomplete="current-password"></div>
         <div class="row wrap gap">
-          <button class="btn primary" id="btn-sb-signin">تسجيل الدخول</button>
-          <button class="btn" id="btn-sb-signup">إنشاء حساب</button>
+          <button class="btn primary" id="btn-sb-signin">🔑 تسجيل الدخول</button>
+          <button class="btn" id="btn-sb-signup">🆕 إنشاء حساب</button>
           <button class="btn" id="btn-sync-now">🔄 مزامنة الآن</button>
-          <button class="btn danger" id="btn-sb-signout">خروج</button>
+          <button class="btn danger" id="btn-sb-signout">🚪 خروج</button>
           <span id="sb-status" class="muted small">غير مسجّل</span>
         </div>
         <details class="details">
           <summary>جداول قاعدة البيانات (SQL) — انسخها في Supabase ← SQL Editor</summary>
           <pre id="sql-text" class="ltr small code"></pre>
-          <button class="btn small" id="btn-copy-sql">نسخ SQL</button>
+          <button class="btn small" id="btn-copy-sql">📋 نسخ SQL</button>
         </details>
       </div>
 
       <div class="card">
-        <h3>البيانات</h3>
+        <h3>💾 البيانات</h3>
         <div class="row wrap gap">
           <button class="btn" id="btn-export-all">⬇️ تصدير كل بياناتي</button>
           <label class="btn" for="import-file">⬆️ استيراد نسخة احتياطية</label>
@@ -249,16 +293,17 @@
       </div>
 
       <div class="card">
-        <h3>تثبيت التطبيق (PWA)</h3>
+        <h3>📲 تثبيت التطبيق (PWA)</h3>
         <div class="row wrap gap">
           <button class="btn primary" id="btn-install" disabled>📲 تثبيت على الجهاز</button>
-          <button class="btn small" id="btn-sw-update">تحديث النسخة المخزّنة</button>
+          <button class="btn small" id="btn-sw-update">🔄 تحديث النسخة المخزّنة</button>
+          <button class="btn small" id="btn-help">❓ المساعدة والجولة</button>
         </div>
         <p class="muted small">بعد أول زيارة يعمل الموقع بدون إنترنت قدر الإمكان.</p>
       </div>
 
       <div class="card">
-        <h3>اختصارات الكيبورد (كمبيوتر)</h3>
+        <h3>⌨️ اختصارات الكيبورد (كمبيوتر)</h3>
         <ul class="shortcuts">
           <li><kbd>Space</kbd> استماع للنص المحدد</li>
           <li><kbd>S</kbd> حفظ النص المحدد في قاموسي</li>
@@ -270,18 +315,19 @@
         </ul>
       </div>
 
-      <p class="muted small center">قارئي — كل بياناتك محفوظة على جهازك. صُنع بحب لتعلّم الإنجليزية 💚</p>
+      <p class="muted small center">قارئي — كل بياناتك محفوظة على جهازك. صُنع بحب لتعلّم الإنجليزية 💙</p>
     </section>
 
   </main>
 
   <nav id="bottomnav">
     <a href="#/library" data-nav="library"><span class="ic">📚</span><span>مكتبتي</span></a>
-    <a href="#/dictionary" data-nav="dictionary"><span class="ic">📖</span><span>قاموسي</span></a>
+    <a href="#/reader" data-nav="reader"><span class="ic">📖</span><span>القارئ</span></a>
+    <a href="#/dictionary" data-nav="dictionary"><span class="ic">📕</span><span>قاموسي</span></a>
     <a href="#/study" data-nav="study"><span class="ic">🃏</span><span>مراجعة</span></a>
-    <a href="#/stats" data-nav="stats"><span class="ic">📈</span><span>تقدّمي</span></a>
-    <a href="#/settings" data-nav="settings"><span class="ic">⚙️</span><span>إعدادات</span></a>
   </nav>
+
+  <button id="help-fab" class="help-fab" title="مساعدة وطريقة الاستخدام">❓<span>مساعدة</span></button>
 
 </div>
 
@@ -290,23 +336,28 @@
     <span id="pop-type" class="chip"></span>
     <span id="pop-source" class="muted tiny"></span>
     <div class="spacer"></div>
-    <button class="icon-btn" id="pop-copy" title="نسخ">⧉</button>
-    <button class="icon-btn" id="pop-close" title="إغلاق">✕</button>
+    <button class="btn small" id="pop-copy" title="نسخ النص المحدد">⧉ نسخ</button>
+    <button class="btn small" id="pop-close" title="إغلاق النافذة">✕ إغلاق</button>
   </div>
   <div id="pop-text" class="pop-text en"></div>
-  <div id="pop-body" class="pop-body"></div>
+  <div class="pop-audio">
+    <button class="btn small" id="pop-play" title="استماع للنص">🔊 استماع</button>
+    <button class="btn small hidden" id="pop-stop" title="إيقاف النطق">⏹ إيقاف</button>
+    <button class="btn small" id="pop-syl" title="نطق مقطعاً مقطعاً">🔤 مقاطع</button>
+    <button class="btn small" id="pop-spell" title="تهجئة حرفاً حرفاً">🔡 تهجئة</button>
+    <button class="btn small primary" id="pop-save" title="حفظ في قاموسي">⭐ حفظ</button>
+  </div>
   <div class="pop-rates">
     <span class="muted tiny">السرعة:</span>
     <button class="chip-btn" data-rate="0.5">0.5x</button>
-    <button class="chip-btn" data-rate="0.75">0.75x</button>
+    <button class="chip-btn active" data-rate="0.75">0.75x</button>
     <button class="chip-btn" data-rate="1">1x</button>
-    <button class="chip-btn" id="pop-repeat">🔁 إعادة</button>
+    <label class="vol-wrap" title="مستوى الصوت">🔉 <input type="range" id="pop-volume" min="0" max="100" step="5" value="100"></label>
+    <button class="chip-btn" id="pop-repeat" title="إعادة النطق">🔁 إعادة</button>
   </div>
-  <div class="pop-actions">
-    <button class="btn small" id="pop-play" title="استماع">🔊 استماع</button>
-    <button class="btn small" id="pop-slow" title="نطق بطيء">🐢 بطيء</button>
-    <button class="btn small" id="pop-syl" title="نطق مقطعي">🔤 مقاطع</button>
-    <button class="btn small primary" id="pop-save" title="حفظ">⭐ حفظ</button>
+  <div id="pop-lines" class="speak-lines hidden"></div>
+  <div id="pop-body" class="pop-body">
+    <div class="muted small">جارٍ تحضير الشرح…</div>
   </div>
 </div>
 
@@ -317,19 +368,18 @@
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.2/dist/docx-preview.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.4/dist/tesseract.min.js"></script>
 
-<script src="js/util.js?v=2"></script>
-<script src="js/db.js?v=2"></script>
-<script src="js/settings.js?v=2"></script>
-<script src="js/ai.js?v=2"></script>
-<script src="js/tts.js?v=2"></script>
-<script src="js/viewer.js?v=2"></script>
-<script src="js/library.js?v=2"></script>
-<script src="js/dictionary.js?v=2"></script>
-<script src="js/study.js?v=2"></script>
-<script src="js/sync.js?v=2"></script>
-<script src="js/backup.js?v=2"></script>
-<script src="js/app.js?v=2"></script>
+<script src="js/util.js?v=4"></script>
+<script src="js/db.js?v=4"></script>
+<script src="js/settings.js?v=4"></script>
+<script src="js/ai.js?v=4"></script>
+<script src="js/tts.js?v=4"></script>
+<script src="js/viewer.js?v=4"></script>
+<script src="js/library.js?v=4"></script>
+<script src="js/dictionary.js?v=4"></script>
+<script src="js/study.js?v=4"></script>
+<script src="js/sync.js?v=4"></script>
+<script src="js/backup.js?v=4"></script>
+<script src="js/app.js?v=4"></script>
 </body>
 </html>

@@ -36,7 +36,7 @@ window.U = (function () {
     const t = String(text || '').trim();
     if (!t) return 'word';
     const words = countWords(t);
-    if (words <= 1) return 'word';
+    if (words <= 3) return 'word';
     if (words <= 18 && !/[\n\r]/.test(t) && !/[.!?…]["')\]]*\s+[A-Z]/.test(t.slice(0, -1))) return 'sentence';
     return 'paragraph';
   }
@@ -321,6 +321,25 @@ window.U = (function () {
   function stripMarkup(s) {
     return String(s || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
   }
+  function splitSentences(text) {
+    const t = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!t) return [];
+    const parts = t.match(/[^.!?\u2026]+[.!?\u2026]+["')\]]*|[^.!?\u2026]+$/g) || [t];
+    const out = [];
+    parts.forEach((p) => {
+      const s = p.trim();
+      if (!s) return;
+      if (s.length <= 240) { out.push(s); return; }
+      const segs = s.match(/[^,;:]+[,;:]?/g) || [s];
+      let acc = '';
+      segs.forEach((seg) => {
+        if (acc && (acc + ' ' + seg).trim().length <= 240) acc = (acc + ' ' + seg).trim();
+        else { if (acc) out.push(acc); acc = seg.trim(); }
+      });
+      if (acc) out.push(acc);
+    });
+    return out.length ? out : [t];
+  }
   function cleanSelection(raw) {
     let t = String(raw || '');
     t = t.replace(/[\u00AD\u200B-\u200D\u2060\uFEFF]/g, '');
@@ -347,6 +366,6 @@ window.U = (function () {
     toast, modal, confirmBox, promptBox, download, readAsText, readAsDataURL,
     readAsArrayBuffer, dataURLToBlob, chunkText, decodeEntities, extOf,
     syllables, translitWord, translitText, getContextAround, posArabic,
-    isMobile, stripMarkup, cleanSelection
+    isMobile, stripMarkup, cleanSelection, splitSentences
   };
 })();

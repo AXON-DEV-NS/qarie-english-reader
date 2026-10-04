@@ -121,12 +121,78 @@ window.AI = (function () {
     where: ['أين', 'وير'],
     why: ['لماذا', 'واي'],
     who: ['من', 'هُو'],
-    which: ['أي', 'وِتش']
+    which: ['أي', 'وِتش'],
+    'words to know': ['كلمات يجب معرفتها', 'وُوردز تو نُو'],
+    'self-image': ['الصورة الذاتية', 'سِلف إيمِج'],
+    'fast-changing': ['سريع التغيّر', 'فاست تشينجِنغ'],
+    'play a major role': ['يلعب دوراً رئيسياً', 'پلَي أ مَيجَر رول'],
+    shape: ['يُشكّل / يؤثر في', 'شَيب'],
+    teenager: ['مراهق', 'تين إيجَر'],
+    inspire: ['يُلهم / يحفّز', 'إنسبايَر'],
+    healthy: ['صحي', 'هِلثي'],
+    habit: ['عادة', 'هابِت'],
+    positive: ['إيجابي', 'پوزِتِف'],
+    unrealistic: ['غير واقعي', 'أنريلِستِك'],
+    expectation: ['توقّع', 'إكسبِكتيشِن'],
+    pressure: ['ضغط', 'پرِشَر'],
+    decade: ['عقد (١٠ سنوات)', 'دِكيد'],
+    transform: ['يحوّل / يغيّر', 'ترانسفورم'],
+    stage: ['مرحلة / خشبة المسرح', 'ستِيج'],
+    perform: ['يؤدي / يقوم بـ', 'پرفورم'],
+    version: ['نسخة', 'ڤيرژِن'],
+    sensitive: ['حسّاس', 'سِنسِتِف'],
+    significant: ['مهم / كبير', 'سيگنِفِكِنت'],
+    research: ['بحث / يبحث', 'رِسيرتش'],
+    platform: ['منصة', 'پلَتفورم'],
+    platforms: ['منصات', 'پلَتفورمز'],
+    contact: ['تواصل / يتواصل', 'كونتاكت'],
+    individual: ['فرد / فردي', 'إندِڤيدوَل'],
+    individuals: ['أفراد', 'إندِڤيدوَلز'],
+    model: ['نموذج / منشئ', 'مودِل'],
+    particular: ['خاص / معيّن', 'پَرتِكيولَر'],
+    identity: ['هوية', 'آيدِنتِتي'],
+    formation: ['تكوين', 'فورميشِن'],
+    psychological: ['نفسي', 'سايكولوجِكَل'],
+    result: ['نتيجة', 'رِزَلت'],
+    published: ['نُشر', 'پَبليشد'],
+    association: ['جمعية / رابطة', 'أسوسييشِن'],
+    spend: ['يمضي / ينفق', 'سبِند'],
+    'image-based': ['قائم على الصور', 'إيمِج بيست'],
+    likely: ['محتمل', 'لايكلي'],
+    symptom: ['عرَض', 'سِمتُم'],
+    dissatisfaction: ['عدم الرضا', 'دِسساتِسفاكشِن'],
+    compare: ['يقارن', 'كُمپير'],
+    communication: ['تواصل', 'كُميونِكيشِن'],
+    tool: ['أداة', 'تُول'],
+    tools: ['أدوات', 'تُولز'],
+    carefully: ['بعناية', 'كيرفُلي'],
+    construct: ['يبني / يشكّل', 'كُنسترَكت'],
+    'self-esteem': ['احترام الذات', 'سِلف إستيم'],
+    'social media': ['وسائل التواصل الاجتماعي', 'سوشَل ميديا'],
+    'spent': ['أمضى / أنفق', 'سبِنت']
+  };
+
+  const MODELS = {
+    openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+    gemini: { baseUrl: '', model: 'gemini-1.5-flash' },
+    anthropic: { baseUrl: 'https://api.anthropic.com/v1', model: 'claude-3-5-haiku-latest' }
   };
 
   function hasAI() {
     const ai = Settings.all().ai;
     return !!(ai && ai.provider && ai.provider !== 'none' && ai.key);
+  }
+
+  function friendlyError(e) {
+    const m = String((e && e.message) || e || '');
+    if (/ألغ|abort/i.test(m)) return 'تم إلغاء الطلب';
+    if (/401|403|invalid api key|incorrect api key|unauthorized|api key/i.test(m)) {
+      return 'المفتاح غير صحيح أو منتهي';
+    }
+    if (/429|rate limit|quota|exceeded/i.test(m)) return 'تجاوزت حد الاستخدام، انتظر قليلاً';
+    if (/5\d\d|overloaded|unavailable/i.test(m)) return 'خدمة الذكاء الاصطناعي غير متاحة الآن';
+    if (/Failed to fetch|NetworkError|load failed|Network request failed/i.test(m)) return 'تعذّر الاتصال بالإنترنت';
+    return m || 'خطأ غير معروف';
   }
 
   function parseJson(text) {
@@ -135,20 +201,36 @@ window.AI = (function () {
     t = t.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
     try { return JSON.parse(t); } catch (e) {}
     const m = t.match(/\{[\s\S]*\}/);
-    if (m) {
-      try { return JSON.parse(m[0]); } catch (e2) {}
-    }
+    if (m) { try { return JSON.parse(m[0]); } catch (e2) {} }
     return null;
   }
 
-  async function callAI(system, user) {
+  function withTimeout(promise, ms, fallback) {
+    return Promise.race([
+      Promise.resolve(promise).catch(() => fallback),
+      new Promise((resolve) => setTimeout(() => resolve(fallback), ms))
+    ]);
+  }
+  function fetchWithTimeout(url, ms, options) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
+    return fetch(url, Object.assign({}, options || {}, { signal: ctrl.signal })).finally(() => clearTimeout(timer));
+  }
+
+  async function callAI(system, user, opts) {
+    const o = opts || {};
     const ai = Settings.all().ai;
     if (!hasAI()) throw new Error('لا يوجد مفتاح AI');
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 45000);
+    const timer = setTimeout(() => ctrl.abort(), o.timeout || 25000);
+    if (o.signal) {
+      if (o.signal.aborted) ctrl.abort();
+      else o.signal.addEventListener('abort', () => ctrl.abort(), { once: true });
+    }
+    const maxTokens = o.maxTokens || 400;
     try {
       if (ai.provider === 'gemini') {
-        const model = ai.model || 'gemini-1.5-flash';
+        const model = ai.model || MODELS.gemini.model;
         const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) +
           ':generateContent?key=' + encodeURIComponent(ai.key);
         const res = await fetch(url, {
@@ -158,7 +240,7 @@ window.AI = (function () {
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: system }] },
             contents: [{ role: 'user', parts: [{ text: user }] }],
-            generationConfig: { temperature: 0.2, responseMimeType: 'application/json' }
+            generationConfig: { temperature: 0.2, maxOutputTokens: maxTokens, responseMimeType: 'application/json' }
           })
         });
         if (!res.ok) throw new Error('AI HTTP ' + res.status);
@@ -169,10 +251,35 @@ window.AI = (function () {
         if (!t) throw new Error('رد فارغ من AI');
         return t;
       }
-      const base = (ai.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
+      if (ai.provider === 'anthropic') {
+        const base = (ai.baseUrl || MODELS.anthropic.baseUrl).replace(/\/+$/, '');
+        const res = await fetch(base + '/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': ai.key,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true'
+          },
+          signal: ctrl.signal,
+          body: JSON.stringify({
+            model: ai.model || MODELS.anthropic.model,
+            max_tokens: maxTokens,
+            system: system,
+            messages: [{ role: 'user', content: user }]
+          })
+        });
+        if (!res.ok) throw new Error('AI HTTP ' + res.status);
+        const j = await res.json();
+        const part = (j.content || []).find((c) => c && c.type === 'text');
+        if (!part || !part.text) throw new Error('رد فارغ من AI');
+        return part.text;
+      }
+      const base = (ai.baseUrl || MODELS.openai.baseUrl).replace(/\/+$/, '');
       const body = {
-        model: ai.model || 'gpt-4o-mini',
+        model: ai.model || MODELS.openai.model,
         temperature: 0.2,
+        max_tokens: maxTokens,
         response_format: { type: 'json_object' },
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }]
       };
@@ -201,57 +308,47 @@ window.AI = (function () {
     }
   }
 
-  const SYS = 'أنت معجم ومترجم إنجليزي-عربي خبير لتعليم اللغة للناطقين بالعربية. ' +
-    'تجيب دائماً بكائن JSON صحيح فقط، دون أي شرح إضافي ودون أسطر برمجية ودون نص قبل JSON أو بعده.';
+  const SYS_WORD = 'أنت قاموس إنجليزي-عربي مدرسي. تجيب بكائن JSON صحيح فقط دون أي نص إضافي.';
+  const SYS_SENT = 'أنت مترجم إنجليزي-عربي دقيق وسريع. تجيب بكائن JSON صحيح فقط دون أي نص إضافي.';
 
-  function buildPrompt(text, type, context) {
-    const kind = type === 'word' ? 'كلمة' : (type === 'sentence' ? 'جملة' : 'فقرة');
-    return 'النص المحدد: "' + text + '"\n' +
-      'نوعه: ' + kind + '\n' +
-      (context ? 'السياق الذي ورد فيه: "' + context.slice(0, 700) + '"\n' : '') +
-      'أعد كائن JSON بهذه الحقول:\n' +
-      '{\n' +
-      '  "meaning": "المعنى أو الترجمة الكاملة بالعربية الفصحى الواضحة (للكلمة: حسب السياق)",\n' +
-      '  "pos": "نوع الكلمة بالعربية: اسم/فعل/صفة/حال/حرف جر/عبارة (للكلمة فقط)",\n' +
-      '  "pron": "النطق التقريبي بالحروف العربية مع التشكيل الكامل (مثال: hello -> هَلُو)",\n' +
-      '  "ipa": "النطق بالرموز الصوتية إن أمكن (للكلمة فقط، وإلا اتركه فارغاً)",\n' +
-      '  "syllables": ["المقاطع الصوتية للكلمة بالإنجليزية فقط"],\n' +
-      '  "entries": [{"pos": "اسم", "meaning": "أهم المعاني الأخرى" }],\n' +
-      '  "examples": [{"en": "جملة إنجليزية مناسبة", "ar": "ترجمتها العربية"}],\n' +
-      '  "synonyms": ["مرادفات إنجليزية"]\n' +
-      '}\n' +
-      'إذا كان النص جملة أو فقرة: اجعل type الحقل meaning ترجمة كاملة سليمة، وpron نطقاً عربياً تقريبياً للنص، والمقاطع فارغة.';
+  function wordPrompt(text, context) {
+    return 'الكلمة أو العبارة: "' + text + '"\n' +
+      (context ? 'السياق: "' + String(context).slice(0, 300) + '"\n' : '') +
+      'أعد JSON فقط:\n' +
+      '{"m":"معنى مختصر بالعربية حسب السياق","p":"اسم/فعل/صفة/حال/عبارة","pron":"النطق بالحروف العربية مع التشكيل","ex":{"en":"جملة إنجليزية قصيرة","ar":"ترجمتها"}}';
+  }
+  function sentPrompt(text) {
+    return 'ترجم النص إلى العربية الفصحى ترجمة كاملة وواضحة:\n"' + String(text).slice(0, 1200) + '"\n' +
+      'أعد JSON فقط: {"t":"الترجمة"}';
   }
 
-  function normalizeEntries(entries) {
-    if (!Array.isArray(entries)) return [];
-    return entries.slice(0, 5).map((e) => ({
-      pos: U.posArabic(e && e.pos) || '',
-      meaning: String((e && (e.meaning || e.definition)) || '')
-    })).filter((e) => e.meaning);
-  }
-  function normalizeExamples(examples) {
-    if (!Array.isArray(examples)) return [];
-    return examples.slice(0, 3).map((e) => ({
-      en: String((e && (e.en || e.english)) || ''),
-      ar: String((e && (e.ar || e.arabic)) || '')
-    })).filter((e) => e.en);
-  }
-
-  async function aiLookup(text, type, context) {
-    const out = await callAI(SYS, buildPrompt(text, type, context));
+  async function aiLookup(text, type, context, signal) {
+    if (type === 'word') {
+      const out = await callAI(SYS_WORD, wordPrompt(text, context), { maxTokens: 260, signal: signal });
+      const j = parseJson(out);
+      if (!j || !(j.m || j.meaning)) throw new Error('رد غير مفهوم من AI');
+      const m = j.m || j.meaning;
+      const p = j.p || j.pos || '';
+      const ex = j.ex || (Array.isArray(j.examples) ? j.examples[0] : null);
+      return {
+        meaning: String(m),
+        pos: U.posArabic(p) || String(p),
+        pron: String(j.pron || ''),
+        ipa: '',
+        syllables: U.syllables(text),
+        entries: [],
+        synonyms: [],
+        examples: ex && (ex.en || ex.english) ? [{ en: String(ex.en || ex.english), ar: String(ex.ar || ex.arabic || '') }] : [],
+        source: 'ai'
+      };
+    }
+    const out = await callAI(SYS_SENT, sentPrompt(text), { maxTokens: 600, signal: signal });
     const j = parseJson(out);
-    if (!j || !j.meaning) throw new Error('رد AI غير مفهوم');
+    const tr = (j && (j.t || j.meaning)) ? String(j.t || j.meaning) : String(out || '').trim();
+    if (!tr) throw new Error('رد غير مفهوم من AI');
     return {
-      meaning: String(j.meaning),
-      pos: U.posArabic(j.pos) || String(j.pos || ''),
-      pron: String(j.pron || ''),
-      ipa: String(j.ipa || ''),
-      syllables: Array.isArray(j.syllables) ? j.syllables.map(String).slice(0, 8) : [],
-      entries: normalizeEntries(j.entries || j.meanings),
-      examples: normalizeExamples(j.examples),
-      synonyms: Array.isArray(j.synonyms) ? j.synonyms.map(String).slice(0, 8) : [],
-      source: 'ai'
+      meaning: tr, pos: '', pron: '', ipa: '',
+      entries: [], examples: [], synonyms: [], syllables: [], source: 'ai'
     };
   }
 
@@ -260,7 +357,7 @@ window.AI = (function () {
     const out = [];
     for (let i = 0; i < chunks.length; i++) {
       const url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(chunks[i]) + '&langpair=en|ar';
-      const res = await fetch(url);
+      const res = await fetchWithTimeout(url, 9000);
       if (!res.ok) throw new Error('تعذّرت الترجمة المجانية');
       const j = await res.json();
       const tr = j && j.responseData && j.responseData.translatedText;
@@ -272,7 +369,7 @@ window.AI = (function () {
 
   async function dictApi(word) {
     try {
-      const res = await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/' + encodeURIComponent(word));
+      const res = await fetchWithTimeout('https://api.dictionaryapi.dev/api/v2/entries/en/' + encodeURIComponent(word), 5000);
       if (!res.ok) return null;
       const j = await res.json();
       if (!Array.isArray(j) || !j[0]) return null;
@@ -280,10 +377,10 @@ window.AI = (function () {
       const phonetic = first.phonetic || ((first.phonetics || []).find((p) => p && p.text) || {}).text || '';
       const meanings = (first.meanings || []).map((m) => ({
         partOfSpeech: m.partOfSpeech,
-        definitions: (m.definitions || []).slice(0, 2)
+        definitions: (m.definitions || []).slice(0, 1)
       }));
       const synonyms = [];
-      (first.meanings || []).forEach((m) => (m.synonyms || []).forEach((s) => { if (synonyms.length < 8) synonyms.push(s); }));
+      (first.meanings || []).forEach((m) => (m.synonyms || []).forEach((s) => { if (synonyms.length < 6) synonyms.push(s); }));
       return { phonetic: phonetic, meanings: meanings, synonyms: synonyms };
     } catch (e) {
       return null;
@@ -291,32 +388,34 @@ window.AI = (function () {
   }
 
   async function wordFreeLookup(text) {
-    const w = U.normalizeWord(text) || text.toLowerCase().trim();
-    if (MINI[w]) {
+    const rawKey = String(text).toLowerCase().replace(/\s+/g, ' ').trim();
+    const w = U.normalizeWord(text) || rawKey;
+    const miniHit = MINI[rawKey] || MINI[w];
+    if (miniHit) {
       return {
-        meaning: MINI[w][0], pos: '', pron: MINI[w][1], ipa: '',
+        meaning: miniHit[0], pos: '', pron: miniHit[1], ipa: '',
         entries: [], examples: [], synonyms: [], syllables: U.syllables(w), source: 'mini'
       };
     }
-    const dict = await dictApi(w);
-    let meaning = '';
-    try { meaning = await translateFree(text); } catch (e) {}
+    const dictP = dictApi(w);
+    const trP = translateFree(text).catch(() => '');
+    let meaning = await trP;
+    const dict = await Promise.race([dictP, U.sleep(1300).then(() => null)]);
     const entries = [];
     if (dict && dict.meanings) {
-      dict.meanings.slice(0, 3).forEach((m) => {
+      dict.meanings.slice(0, 2).forEach((m) => {
         const def = m.definitions && m.definitions[0] ? m.definitions[0].definition : '';
         entries.push({ pos: U.posArabic(m.partOfSpeech), meaning: def });
       });
     }
     if (!meaning && entries.length) {
-      try { meaning = await translateFree(entries[0].meaning); } catch (e) {}
+      meaning = await withTimeout(translateFree(entries[0].meaning), 8000, '');
     }
     if (!meaning) meaning = entries.map((e) => e.meaning).slice(0, 2).join(' — ') || '—';
     const examples = [];
     if (dict && dict.meanings && dict.meanings[0] && dict.meanings[0].definitions && dict.meanings[0].definitions[0] && dict.meanings[0].definitions[0].example) {
       const en = dict.meanings[0].definitions[0].example;
-      let ar = '';
-      try { ar = await translateFree(en); } catch (e) {}
+      const ar = await withTimeout(translateFree(en), 8000, '');
       examples.push({ en: en, ar: ar });
     }
     return {
@@ -336,39 +435,90 @@ window.AI = (function () {
     if (type === 'word') return wordFreeLookup(text);
     const meaning = await translateFree(text);
     return {
-      meaning: meaning, pos: '', pron: U.translitText(text), ipa: '',
+      meaning: meaning, pos: '', pron: '', ipa: '',
       entries: [], examples: [], synonyms: [], syllables: [], source: 'free'
     };
   }
 
-  async function lookup(text, context) {
+  const cache = {};
+
+  async function lookup(text, context, opts) {
+    const o = opts || {};
     const t = String(text || '').trim();
     if (!t) return null;
     const type = U.classify(t);
     const key = 'lu:' + type + ':' + t.toLowerCase().replace(/\s+/g, ' ').slice(0, 180);
+    if (cache[key]) return cache[key];
     const cached = await DB.cacheGet(key);
-    if (cached && cached.meaning) return cached;
+    if (cached && cached.meaning) { cache[key] = cached; return cached; }
     let res = null;
+    let aiError = null;
     if (hasAI()) {
-      try { res = await aiLookup(t, type, context); } catch (e) { res = null; }
+      try {
+        res = await aiLookup(t, type, context, o.signal);
+      } catch (e) {
+        if (/abort/i.test(e && e.name || '') || /ألغ|abort/i.test(e && e.message || '')) throw e;
+        aiError = e;
+        res = null;
+      }
     }
-    if (!res) res = await freeLookup(t, type);
+    if (!res) {
+      try {
+        res = await withTimeout(freeLookup(t, type), 18000, null);
+      } catch (e) {
+        if (!aiError) throw e;
+        res = null;
+      }
+    }
+    if (!res && aiError) {
+      const err = new Error(friendlyError(aiError));
+      err.friendly = true;
+      throw err;
+    }
+    if (!res) {
+      const err = new Error('تأخّر جلب المعنى — تحقّق من الإنترنت أو أضف مفتاح AI من الإعدادات');
+      err.friendly = true;
+      throw err;
+    }
     res.text = t;
     res.type = type;
-    const ttl = type === 'word' ? 30 * 86400000 : 7 * 86400000;
-    await DB.cacheSet(key, res, ttl);
+    if (aiError) res.note = friendlyError(aiError);
+    if (res.meaning && res.meaning !== '—') {
+      cache[key] = res;
+      const ttl = type === 'word' ? 30 * 86400000 : 7 * 86400000;
+      DB.cacheSet(key, res, ttl).catch(() => {});
+    }
     return res;
   }
 
+  async function pronounce(text, opts) {
+    const o = opts || {};
+    const t = String(text || '').trim();
+    if (!t) return '';
+    const key = 'pr:' + U.normalizeWord(t).slice(0, 120);
+    if (cache[key]) return cache[key];
+    const cached = await DB.cacheGet(key);
+    if (cached && cached.pron) { cache[key] = cached; return cached.pron; }
+    let pron = '';
+    if (hasAI()) {
+      try {
+        const out = await callAI('أعد JSON فقط.', 'اكتب نطق هذا النص بالحروف العربية مع التشكيل:\n"' + t.slice(0, 300) + '"\nأعد {"pron":"النطق"}', { maxTokens: 160, signal: o.signal });
+        const j = parseJson(out);
+        if (j && j.pron) pron = String(j.pron);
+      } catch (e) {}
+    }
+    if (!pron) pron = U.translitText(t);
+    cache[key] = { pron: pron };
+    DB.cacheSet(key, { pron: pron }, 90 * 86400000).catch(() => {});
+    return pron;
+  }
+
   async function test() {
-    const out = await callAI(
-      'أعد JSON صحيحاً فقط.',
-      'أعد {"ok":true,"msg":"مرحباً"} فقط.'
-    );
+    const out = await callAI('أعد JSON صحيحاً فقط.', 'أعد {"ok":true,"msg":"مرحباً"} فقط.', { maxTokens: 60, timeout: 20000 });
     const j = parseJson(out);
     if (!j) throw new Error('لم يصل JSON صحيح');
     return JSON.stringify(j);
   }
 
-  return { lookup, callAI, test, translateFree, hasAI, MINI, parseJson };
+  return { lookup, pronounce, translateFree, test, hasAI, parseJson, friendlyError, MINI, MODELS };
 })();

@@ -1,9 +1,9 @@
-const VERSION = 'qarie-v2';
+const VERSION = 'qarie-v4';
 const SHELL = [
-  './', './index.html', './manifest.webmanifest', './css/styles.css?v=2',
-  './js/util.js?v=2', './js/db.js?v=2', './js/settings.js?v=2', './js/ai.js?v=2',
-  './js/tts.js?v=2', './js/viewer.js?v=2', './js/library.js?v=2', './js/dictionary.js?v=2',
-  './js/study.js?v=2', './js/sync.js?v=2', './js/backup.js?v=2', './js/app.js?v=2',
+  './', './index.html', './manifest.webmanifest', './css/styles.css?v=4',
+  './js/util.js?v=4', './js/db.js?v=4', './js/settings.js?v=4', './js/ai.js?v=4',
+  './js/tts.js?v=4', './js/viewer.js?v=4', './js/library.js?v=4', './js/dictionary.js?v=4',
+  './js/study.js?v=4', './js/sync.js?v=4', './js/backup.js?v=4', './js/app.js?v=4',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-180.png'
 ];
 const CDN = [
@@ -11,8 +11,7 @@ const CDN = [
   'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js',
   'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js',
   'https://cdn.jsdelivr.net/npm/docx-preview@0.3.2/dist/docx-preview.min.js',
-  'https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js',
-  'https://cdn.jsdelivr.net/npm/tesseract.js@4.1.4/dist/tesseract.min.js'
+  'https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js'
 ];
 
 self.addEventListener('install', (e) => {
@@ -72,7 +71,7 @@ self.addEventListener('fetch', (e) => {
   }
 
   const sameOrigin = url.origin === self.location.origin;
-  const knownCdn = sameOrigin || /(^|\.)(cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|tessdata\.projectnaptha\.com|unpkg\.com)$/.test(url.hostname);
+  const knownCdn = sameOrigin || /(^|\.)(cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|fonts\.googleapis\.com|fonts\.gstatic\.com|tessdata\.projectnaptha\.com|unpkg\.com)$/.test(url.hostname);
   if (!knownCdn) return;
   e.respondWith(staleWhileRevalidate(req));
 });

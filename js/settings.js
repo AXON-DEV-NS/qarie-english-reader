@@ -1,8 +1,10 @@
 window.Settings = (function () {
   const DEFAULTS = {
-    theme: 'auto',
+    theme: 'light',
     accent: 'en-US',
-    rate: 1,
+    rate: 0.75,
+    sentRate: 0.8,
+    volume: 100,
     autoSpeak: false,
     readerFontSize: 100,
     ai: {
@@ -11,7 +13,19 @@ window.Settings = (function () {
       model: 'gpt-4o-mini',
       key: ''
     },
+    tts: {
+      provider: 'none',
+      key: '',
+      voice: '',
+      model: ''
+    },
     supabase: { url: '', key: '' }
+  };
+  const AI_PRESETS = {
+    none: null,
+    openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+    gemini: { baseUrl: '', model: 'gemini-1.5-flash' },
+    anthropic: { baseUrl: 'https://api.anthropic.com/v1', model: 'claude-3-5-haiku-latest' }
   };
   let data = JSON.parse(JSON.stringify(DEFAULTS));
 
@@ -20,14 +34,17 @@ window.Settings = (function () {
     if (saved && typeof saved === 'object') {
       data = Object.assign({}, DEFAULTS, saved);
       data.ai = Object.assign({}, DEFAULTS.ai, saved.ai || {});
+      data.tts = Object.assign({}, DEFAULTS.tts, saved.tts || {});
       data.supabase = Object.assign({}, DEFAULTS.supabase, saved.supabase || {});
     }
+    if (data.theme === 'auto') data.theme = 'light';
     return data;
   }
   function all() { return data; }
   async function save(patch) {
     Object.assign(data, patch || {});
     if (patch && patch.ai) data.ai = Object.assign({}, data.ai, patch.ai);
+    if (patch && patch.tts) data.tts = Object.assign({}, data.tts, patch.tts);
     if (patch && patch.supabase) data.supabase = Object.assign({}, data.supabase, patch.supabase);
     await DB.setMeta('settings', data);
     document.dispatchEvent(new CustomEvent('settings:changed', { detail: data }));
@@ -67,14 +84,12 @@ window.Settings = (function () {
   ].join('\n');
 
   function applyTheme() {
-    const t = data.theme === 'auto'
-      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-      : data.theme;
+    const t = data.theme === 'dark' ? 'dark' : 'light';
     document.documentElement.dataset.theme = t;
     const btn = document.getElementById('theme-btn');
-    if (btn) btn.textContent = t === 'dark' ? '☀️' : '🌙';
+    if (btn) btn.textContent = t === 'dark' ? '☀️ نهاري' : '🌙 ليلي';
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', t === 'dark' ? '#0b1220' : '#0d9488');
+    if (meta) meta.setAttribute('content', t === 'dark' ? '#0b1220' : '#2563eb');
   }
 
   function initUI() {
@@ -82,18 +97,30 @@ window.Settings = (function () {
     const theme = g('set-theme');
     const accent = g('set-accent');
     const rate = g('set-rate');
+    const sentRate = g('set-sent-rate');
+    const volume = g('set-volume');
+    const volLabel = g('vol-label');
     const font = g('set-font');
     const autospeak = g('set-autospeak');
     const provider = g('set-provider');
     const baseurl = g('set-baseurl');
     const model = g('set-model');
     const key = g('set-key');
+    const ttsProvider = g('set-tts-provider');
+    const ttsKey = g('set-tts-key');
+    const ttsVoice = g('set-tts-voice');
     const sbUrl = g('set-sb-url');
     const sbKey = g('set-sb-key');
 
     if (theme) theme.addEventListener('change', () => save({ theme: theme.value }).then(applyTheme));
     if (accent) accent.addEventListener('change', () => save({ accent: accent.value }));
     if (rate) rate.addEventListener('change', () => save({ rate: parseFloat(rate.value) }));
+    if (sentRate) sentRate.addEventListener('change', () => save({ sentRate: parseFloat(sentRate.value) }));
+    if (volume) volume.addEventListener('input', () => {
+      const v = parseInt(volume.value, 10) || 0;
+      if (volLabel) volLabel.textContent = v + '%';
+      save({ volume: v });
+    });
     if (font) font.addEventListener('input', () => {
       const v = parseInt(font.value, 10) || 100;
       document.documentElement.style.setProperty('--reader-scale', String(v / 100));
@@ -101,12 +128,16 @@ window.Settings = (function () {
     });
     if (autospeak) autospeak.addEventListener('change', () => save({ autoSpeak: autospeak.checked }));
     if (provider) provider.addEventListener('change', () => {
-      const p = provider.value;
-      if (p === 'gemini' && (!model.value || /gpt/.test(model.value))) model.value = 'gemini-1.5-flash';
-      if (p === 'openai' && (!model.value || /gemini/.test(model.value))) model.value = 'gpt-4o-mini';
+      const preset = AI_PRESETS[provider.value];
+      if (preset) {
+        if (preset.baseUrl) { baseurl.value = preset.baseUrl; }
+        model.value = preset.model;
+      }
       saveAI();
     });
     [baseurl, model, key].forEach((inp) => { if (inp) inp.addEventListener('change', saveAI); });
+    if (ttsProvider) ttsProvider.addEventListener('change', saveTTS);
+    [ttsKey, ttsVoice].forEach((inp) => { if (inp) inp.addEventListener('change', saveTTS); });
     if (sbUrl) sbUrl.addEventListener('change', () => save({ supabase: { url: sbUrl.value.trim(), key: sbKey.value.trim() } }));
     if (sbKey) sbKey.addEventListener('change', () => save({ supabase: { url: sbUrl.value.trim(), key: sbKey.value.trim() } }));
 
@@ -115,21 +146,41 @@ window.Settings = (function () {
       const st = g('ai-status');
       if (st) st.textContent = provider.value === 'none' ? 'الوضع المجاني فقط' : 'سيُختبر الاتصال عند أول استخدام';
     }
+    function saveTTS() {
+      save({ tts: { provider: ttsProvider.value, key: ttsKey.value.trim(), voice: ttsVoice.value.trim(), model: '' } });
+      const st = g('tts-status');
+      if (st) st.textContent = ttsProvider.value === 'none' ? 'أصوات المتصفح مفعّلة' : 'سيُختبر عند أول استخدام';
+    }
 
     const testBtn = g('btn-test-ai');
     if (testBtn) testBtn.addEventListener('click', async () => {
       const st = g('ai-status');
       const s = all().ai;
-      if (s.provider === 'none' || !s.key) { if (st) st.textContent = 'أدخل مفتاحاً أولاً'; return; }
+      if (s.provider === 'none' || !s.key) { if (st) st.textContent = 'أدخل مفتاحاً أولاً من الأعلى'; return; }
       if (st) st.textContent = 'جارٍ الاختبار…';
       testBtn.disabled = true;
       try {
         const out = await AI.test();
         if (st) st.textContent = '✅ نجح الاتصال: ' + String(out).slice(0, 40);
       } catch (e) {
-        if (st) st.textContent = '❌ فشل: ' + (e.message || e);
+        if (st) st.textContent = '❌ ' + AI.friendlyError(e);
       } finally {
         testBtn.disabled = false;
+      }
+    });
+
+    const testTts = g('btn-test-tts');
+    if (testTts) testTts.addEventListener('click', async () => {
+      const st = g('tts-status');
+      if (st) st.textContent = 'جارٍ الاختبار…';
+      testTts.disabled = true;
+      try {
+        const out = await TTS.test();
+        if (st) st.textContent = '✅ ' + out;
+      } catch (e) {
+        if (st) st.textContent = '❌ ' + (e.message || e);
+      } finally {
+        testTts.disabled = false;
       }
     });
 
@@ -147,9 +198,13 @@ window.Settings = (function () {
   function renderUI() {
     const g = (id) => document.getElementById(id);
     const set = (id, val) => { const n = g(id); if (n) n.value = val; };
-    set('set-theme', data.theme);
+    set('set-theme', data.theme === 'dark' ? 'dark' : 'light');
     set('set-accent', data.accent);
     set('set-rate', String(data.rate));
+    set('set-sent-rate', String(data.sentRate));
+    set('set-volume', String(data.volume));
+    const volLabel = g('vol-label');
+    if (volLabel) volLabel.textContent = (data.volume === null || data.volume === undefined ? 100 : data.volume) + '%';
     set('set-font', String(data.readerFontSize));
     const autospeak = g('set-autospeak');
     if (autospeak) autospeak.checked = !!data.autoSpeak;
@@ -157,6 +212,9 @@ window.Settings = (function () {
     set('set-baseurl', data.ai.baseUrl);
     set('set-model', data.ai.model);
     set('set-key', data.ai.key);
+    set('set-tts-provider', data.tts.provider || 'none');
+    set('set-tts-key', data.tts.key || '');
+    set('set-tts-voice', data.tts.voice || '');
     set('set-sb-url', data.supabase.url);
     set('set-sb-key', data.supabase.key);
     const sql = g('sql-text');
@@ -164,5 +222,5 @@ window.Settings = (function () {
     document.documentElement.style.setProperty('--reader-scale', String((data.readerFontSize || 100) / 100));
   }
 
-  return { DEFAULTS, SQL, load, all, save, applyTheme, initUI, renderUI };
+  return { DEFAULTS, AI_PRESETS, SQL, load, all, save, applyTheme, initUI, renderUI };
 })();
