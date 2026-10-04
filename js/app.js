@@ -13,6 +13,7 @@ window.App = (function () {
   let swReg = null;
   let lastRate = 0.75;
   let autoOpening = false;
+  let pendingFree = null;
 
   function g(id) { return document.getElementById(id); }
 
@@ -28,6 +29,8 @@ window.App = (function () {
     }
     if (name !== 'reader') hidePopup();
     currentView = name;
+    document.body.classList.toggle('reader-mode', name === 'reader');
+    if (name !== 'reader') document.body.classList.remove('hide-bar');
     U.qsa('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + name));
     U.qsa('[data-nav]').forEach((a) => {
       const nav = a.getAttribute('data-nav');
@@ -77,6 +80,20 @@ window.App = (function () {
     } catch (e) { btn.classList.add('hidden'); }
   }
 
+  async function maybeShowTip() {
+    try {
+      const tip = g('reader-tip');
+      if (!tip) return;
+      const n = await DB.getMeta('tipCount', 0);
+      if (n < 3) {
+        tip.classList.remove('hidden');
+        await DB.setMeta('tipCount', n + 1);
+      } else {
+        tip.classList.add('hidden');
+      }
+    } catch (e) {}
+  }
+
   async function openFile(id, loc) {
     const file = await DB.get('files', id);
     if (!file) { U.toast('الملف غير موجود — قد يكون محذوفاً', 'error'); return; }
@@ -87,6 +104,10 @@ window.App = (function () {
       await showView('reader');
       const target = loc || file.lastLocation || null;
       await Viewer.open(file, { loc: target });
+      if (window.TapSelect && TapSelect.clear) TapSelect.clear();
+      maybeShowTip();
+      const sc = g('reader-scroll');
+      if (sc) sc.scrollTop = sc.scrollTop;
     } finally {
       autoOpening = false;
     }
@@ -113,6 +134,8 @@ window.App = (function () {
     if (btnHelp) btnHelp.addEventListener('click', showHelp);
     const heroHelp = g('hero-help');
     if (heroHelp) heroHelp.addEventListener('click', showHelp);
+    const rtHelp = g('rt-help');
+    if (rtHelp) rtHelp.addEventListener('click', showHelp);
   }
 
   function showHelp() {
@@ -121,15 +144,16 @@ window.App = (function () {
       html: '' +
         '<div class="help-steps">' +
         '<div class="help-step"><span class="step-num">1</span><div><strong>ارفع ملفك</strong><br><span class="muted small">من «مكتبتي» اضغط «ارفع ملفك» واختر PDF أو Word أو TXT أو EPUB.</span></div></div>' +
-        '<div class="help-step"><span class="step-num">2</span><div><strong>حدّد كلمة أو جملة</strong><br><span class="muted small">على الموبايل: اضغط مطولاً ثم اسحب. على الكمبيوتر: انقر مرتين للكلمة أو اسحب للجملة. ستظهر نافذة المعنى والنطق.</span></div></div>' +
-        '<div class="help-step"><span class="step-num">3</span><div><strong>استمع واحفظ ⭐</strong><br><span class="muted small">اضغط «استماع» لتسمع النطق، ثم «حفظ» لتجدها في قاموسي وتراجعها بالبطاقات.</span></div></div>' +
+        '<div class="help-step"><span class="step-num">2</span><div><strong>المس كلمة</strong><br><span class="muted small">تتلوّن بالأزرق ويظهر شريط: ＋ كلمة / − كلمة / الجملة / الفقرة / 🔊 ترجمة. وسّع التحديد بالضغط.</span></div></div>' +
+        '<div class="help-step"><span class="step-num">3</span><div><strong>استمع واحفظ ⭐</strong><br><span class="muted small">اضغط «ترجمة» لتظهر النافذة السفلية، ثم «استماع» و«حفظ» للمراجعة بالبطاقات.</span></div></div>' +
         '</div>' +
         '<div class="help-faq">' +
+        '<details><summary>النافذة لا تفتح أثناء التحديد؟</summary><p>هذا مقصود: لا يُرسل أي نص للترجمة إلا بعد ضغطك زر «ترجمة». إن أردت الفتح التلقائي فعّله من الإعدادات ← طريقة التحديد.</p></details>' +
+        '<details><summary>كيف أستخدم التحديد الحر بالسحب؟</summary><p>الإعدادات ← طريقة التحديد ← «تحديد حر بالسحب». بعد ثبات التحديد 0.8 ثانية يظهر زر «ترجمة» فاضغطه.</p></details>' +
+        '<details><summary>تكبير الصفحة والتنقل</summary><p>قرّب بإصبعين حتى 500%، أو اضغط ضغطتين سريعتين للتبديل بين ملء العرض و250%. بعد التكبير اسحب بإصبع واحد للتحرك في كل الاتجاهات.</p></details>' +
         '<details><summary>لا يظهر معنى الكلمة</summary><p>بدون مفتاح AI تظهر ترجمة مجانية للكلمات الشائعة. لجودة أفضل: الإعدادات ← الذكاء الاصطناعي ← أضف مفتاحاً (Gemini Flash أو GPT mini).</p></details>' +
         '<details><summary>الملف عبارة عن صور</summary><p>إذا كان الملف نسخة ممسوحة ضوئياً (صور بلا نص) فلا يمكن تحديد كلمات منه. استخدم نسخة PDF نصية.</p></details>' +
         '<details><summary>كيف أزامن بين أجهزتي؟</summary><p>الإعدادات ← المزامنة السحابية: أضف بيانات Supabase ثم سجّل الدخول، وستتزامن كلماتك وتقدمك تلقائياً.</p></details>' +
-        '<details><summary>كيف أصدّر كلماتي؟</summary><p>من «قاموسي»: زر «تصدير CSV» أو «تصدير Anki». ولنسخة كاملة: الإعدادات ← البيانات ← تصدير كل بياناتي.</p></details>' +
-        '<details><summary>الصوت لا يعمل</summary><p>اضغط زر «استماع» مباشرة (المتصفح يحتاج لمسة من المستخدم). على الآيفون تأكد أن وضع الصامت غير مفعّل. يمكنك أيضاً إضافة صوت عالي الجودة من الإعدادات.</p></details>' +
         '</div>',
       actions: [{ label: 'فهمت، لنبدأ 👌', value: true, primary: true }]
     });
@@ -145,10 +169,50 @@ window.App = (function () {
     } catch (e) {}
   }
 
+  function initSelection() {
+    if (window.TapSelect) {
+      TapSelect.init({
+        onCommit: (detail) => openCompact(detail, { auto: false }),
+        onEmpty: () => document.body.classList.toggle('hide-bar')
+      });
+    }
+    document.addEventListener('app:selection', (e) => {
+      if (window.TapSelect && TapSelect.isTapMode()) return;
+      const detail = e.detail;
+      if (!detail || !detail.text) return;
+      const pop = g('sel-popup');
+      if (pop && !pop.classList.contains('hidden')) {
+        openCompact(detail, { auto: true });
+      } else {
+        showTranslateFab(detail);
+      }
+    });
+    const fab = g('translate-fab');
+    if (fab) fab.addEventListener('click', () => {
+      if (pendingFree) { const d = pendingFree; pendingFree = null; fab.classList.add('hidden'); openCompact(d, { auto: false }); }
+    });
+  }
+
+  function showTranslateFab(detail) {
+    pendingFree = detail;
+    const fab = g('translate-fab');
+    if (!fab) return;
+    fab.classList.remove('hidden');
+    const r = detail.rect || {};
+    const w = fab.offsetWidth || 130;
+    const h = fab.offsetHeight || 48;
+    let left = U.clamp((r.left || 0) + (r.width || 0) / 2 - w / 2, 8, Math.max(8, window.innerWidth - w - 8));
+    let top = (r.top || 0) - h - 10;
+    if (top < 56) top = (r.bottom || 0) + 10;
+    if (top + h > window.innerHeight - 8) top = Math.max(56, window.innerHeight - h - 8);
+    fab.style.left = Math.round(left) + 'px';
+    fab.style.top = Math.round(top) + 'px';
+    if (Settings.all().autoOpenSelection) openCompact(detail, { auto: false });
+  }
+
   function initPopup() {
     const pop = g('sel-popup');
     if (!pop) return;
-    document.addEventListener('app:selection', (e) => onSelection(e.detail));
     pop.addEventListener('mousedown', (e) => e.preventDefault());
     const close = g('pop-close');
     if (close) close.addEventListener('click', hidePopup);
@@ -159,17 +223,26 @@ window.App = (function () {
       catch (e) { U.toast('تعذّر النسخ — انسخه يدوياً', 'warn'); }
     });
     const play = g('pop-play');
-    if (play) play.addEventListener('click', () => { playCurrent(lastRate); });
+    if (play) play.addEventListener('click', () => playCurrent(lastRate));
     const stop = g('pop-stop');
     if (stop) stop.addEventListener('click', () => TTS.stop());
     const repeat = g('pop-repeat');
-    if (repeat) repeat.addEventListener('click', () => { if (TTS.isSpeaking()) TTS.stop(); else TTS.repeat() || playCurrent(lastRate); });
+    if (repeat) repeat.addEventListener('click', () => { if (TTS.isSpeaking()) TTS.stop(); else if (!TTS.repeat()) playCurrent(lastRate); });
     const syl = g('pop-syl');
     if (syl) syl.addEventListener('click', () => { if (currentSel) TTS.speakSyllables(currentSel.text); });
     const spell = g('pop-spell');
     if (spell) spell.addEventListener('click', () => { if (currentSel) TTS.speakSpelling(currentSel.text); });
     const save = g('pop-save');
     if (save) save.addEventListener('click', toggleSave);
+    const more = g('pop-more-btn');
+    if (more) more.addEventListener('click', () => {
+      const body = g('pop-more-body');
+      if (!body) return;
+      const show = body.classList.contains('hidden');
+      body.classList.toggle('hidden', !show);
+      pop.classList.toggle('expanded', show);
+      more.textContent = show ? 'المزيد ▴' : 'المزيد ▾';
+    });
     const vol = g('pop-volume');
     if (vol) vol.addEventListener('input', () => {
       const v = parseInt(vol.value, 10) || 0;
@@ -189,7 +262,7 @@ window.App = (function () {
     document.addEventListener('pointerdown', (e) => {
       const p = g('sel-popup');
       if (!p || p.classList.contains('hidden')) return;
-      if (e.target.closest && e.target.closest('#sel-popup')) return;
+      if (e.target.closest && (e.target.closest('#sel-popup') || e.target.closest('#tap-bar') || e.target.closest('#translate-fab'))) return;
       if (e.target.closest && e.target.closest('.viewer-container')) return;
       hidePopup();
     }, true);
@@ -202,14 +275,45 @@ window.App = (function () {
       stopBtn.classList.toggle('hidden', !speaking);
       if (!speaking) highlightLine(-1);
     });
+    initPopupDrag();
+  }
+
+  function initPopupDrag() {
+    const pop = g('sel-popup');
+    const handle = g('pop-handle');
+    if (!pop || !handle) return;
+    let startY = 0;
+    let dy = 0;
+    let dragging = false;
+    handle.addEventListener('pointerdown', (e) => {
+      dragging = true;
+      startY = e.clientY;
+      dy = 0;
+      pop.classList.add('dragging');
+      try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    handle.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      dy = Math.max(0, e.clientY - startY);
+      pop.style.transform = 'translateY(' + dy + 'px)';
+    });
+    const end = () => {
+      if (!dragging) return;
+      dragging = false;
+      pop.classList.remove('dragging');
+      pop.style.transform = '';
+      if (dy > 90) hidePopup();
+    };
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
   }
 
   function positionPopup(rect) {
     const pop = g('sel-popup');
     if (!pop || !rect) return;
     if (U.isMobile()) { pop.style.top = ''; pop.style.left = ''; return; }
-    const w = pop.offsetWidth || 370;
-    const h = pop.offsetHeight || 320;
+    const w = pop.offsetWidth || 380;
+    const h = pop.offsetHeight || 300;
     const margin = 12;
     let top = rect.bottom + 10;
     if (top + h > window.innerHeight - margin) top = rect.top - h - 10;
@@ -220,8 +324,9 @@ window.App = (function () {
     pop.style.left = Math.round(left) + 'px';
   }
 
-  function onSelection(detail) {
+  function openCompact(detail, opts) {
     if (!detail || !detail.text) return;
+    const o = opts || {};
     const text = String(detail.text).trim();
     if (!text) return;
     lastRect = detail.rect;
@@ -229,13 +334,19 @@ window.App = (function () {
     const pop = g('sel-popup');
     if (!pop) return;
     pop.classList.remove('hidden');
+    document.body.classList.remove('hide-bar');
     g('pop-text').textContent = text;
     const typeEl = g('pop-type');
     if (typeEl) typeEl.textContent = kind === 'word' ? 'كلمة / عبارة' : (kind === 'sentence' ? 'جملة' : 'فقرة');
     const src = g('pop-source');
     if (src) src.textContent = '';
-    const body = g('pop-body');
-    body.innerHTML = '<div class="loading-inline">جارٍ جلب المعنى…</div>';
+    const moreBody = g('pop-more-body');
+    if (moreBody) moreBody.classList.add('hidden');
+    pop.classList.remove('expanded');
+    const moreBtn = g('pop-more-btn');
+    if (moreBtn) moreBtn.textContent = 'المزيد ▾';
+    g('pop-body').innerHTML = '<div class="loading-inline">جارٍ جلب المعنى…</div>';
+    g('pop-extra').innerHTML = '';
     hideLines();
     currentSel = {
       text: text, type: kind, meaning: '', pron: '', pos: '', ipa: '',
@@ -243,12 +354,20 @@ window.App = (function () {
       fileId: detail.fileId, location: detail.location, fileName: detail.fileName
     };
     updateSaveState();
+    if (window.TapSelect) TapSelect.setPopupOpen(true);
     positionPopup(detail.rect);
+    const fab = g('translate-fab');
+    if (fab) fab.classList.add('hidden');
     const token = ++lookupToken;
     clearTimeout(analysisTimer);
     if (lookupCtrl) { try { lookupCtrl.abort(); } catch (e) {} lookupCtrl = null; }
-    TTS.stop();
-    analysisTimer = setTimeout(() => analyze(token, detail, kind), 300);
+    if (o.auto && TTS.isSpeaking()) TTS.stop();
+    analysisTimer = setTimeout(() => analyze(token, detail, kind), o.auto ? 150 : 250);
+    if (!o.auto) {
+      const words = text.split(/\s+/).filter(Boolean).length;
+      if (words <= 3 || Settings.all().autoSpeak) playCurrent(lastRate);
+    }
+    ensureSelectionVisible();
   }
 
   async function analyze(token, detail, kind) {
@@ -270,16 +389,27 @@ window.App = (function () {
       renderPopup(res);
       positionPopup(lastRect);
       updateSaveState();
-      if (Settings.all().autoSpeak && res.type === 'word') playCurrent(lastRate);
+      ensureSelectionVisible();
     } catch (e) {
       if (token !== lookupToken) return;
       if (/abort/i.test((e && e.name) || '')) return;
       renderLookupError(e);
       positionPopup(lastRect);
       updateSaveState();
+      ensureSelectionVisible();
     } finally {
       if (lookupCtrl === ctrl) lookupCtrl = null;
     }
+  }
+
+  function ensureSelectionVisible() {
+    const pop = g('sel-popup');
+    if (!pop || !lastRect || !window.Viewer) return;
+    const inset = pop.offsetHeight || 0;
+    Viewer.ensureVisible(lastRect, inset);
+    setTimeout(() => {
+      if (window.Viewer && lastRect) Viewer.ensureVisible(lastRect, pop.offsetHeight || inset);
+    }, 120);
   }
 
   function renderLookupError(e) {
@@ -292,40 +422,42 @@ window.App = (function () {
 
   function renderPopup(res) {
     const body = g('pop-body');
+    const extra = g('pop-extra');
     const src = g('pop-source');
     const labels = { ai: '🤖 ذكاء اصطناعي', free: '🌐 ترجمة مجانية', mini: '📗 قاموس محلي' };
     if (src) src.textContent = labels[res.source] || '';
     const parts = [];
-    const isWord = res.type === 'word';
     parts.push('<div class="pop-meaning">' + U.esc(res.meaning || '—') + '</div>');
     const bits = [];
     if (res.pos) bits.push('<span class="chip tiny">' + U.esc(res.pos) + '</span>');
     if (res.pron) bits.push('<span class="pop-pron"><span class="muted small">النطق:</span> <span class="pron">' + U.esc(res.pron) + '</span></span>');
     if (bits.length) parts.push('<div class="row wrap gap" style="margin-top:6px">' + bits.join('') + '</div>');
+    body.innerHTML = parts.join('');
+    const extras = [];
+    if (!res.pron && res.type !== 'word') {
+      extras.push('<div class="pron-request"><button class="btn small" id="pop-pron-req">✍️ اكتب النطق</button></div>');
+    }
     if (res.entries && res.entries.length) {
-      parts.push('<ul class="entries">' + res.entries.slice(0, 3).map((en) =>
+      extras.push('<ul class="entries">' + res.entries.slice(0, 3).map((en) =>
         '<li>' + (en.pos ? '<span class="chip tiny alt">' + U.esc(en.pos) + '</span> ' : '') + U.esc(en.meaning) + '</li>'
       ).join('') + '</ul>');
     }
     if (res.examples && res.examples[0] && res.examples[0].en) {
       const ex = res.examples[0];
-      parts.push('<div class="pop-ex"><div class="en">' + U.esc(ex.en) + '</div>' +
+      extras.push('<div class="pop-ex"><div class="en">' + U.esc(ex.en) + '</div>' +
         (ex.ar ? '<div class="ar">' + U.esc(ex.ar) + '</div>' : '') + '</div>');
     }
     if (res.synonyms && res.synonyms.length) {
-      parts.push('<div class="muted small">مرادفات: ' + U.esc(res.synonyms.slice(0, 6).join('، ')) + '</div>');
+      extras.push('<div class="muted small">مرادفات: ' + U.esc(res.synonyms.slice(0, 6).join('، ')) + '</div>');
     }
-    if (!isWord && !res.pron) {
-      parts.push('<div class="pron-request"><button class="btn small" id="pop-pron-req">✍️ اكتب النطق</button></div>');
-    }
-    if (res.note) parts.push('<div class="muted tiny">ملاحظة: ' + U.esc(res.note) + '</div>');
+    if (res.note) extras.push('<div class="muted tiny">ملاحظة: ' + U.esc(res.note) + '</div>');
     if (res.fileName) {
-      parts.push('<div class="muted tiny">📄 ' + U.esc(res.fileName) + (res.location && res.location.page ? ' — صفحة ' + res.location.page : '') + '</div>');
+      extras.push('<div class="muted tiny">📄 ' + U.esc(res.fileName) + (res.location && res.location.page ? ' — صفحة ' + res.location.page : '') + '</div>');
     }
-    body.innerHTML = parts.join('');
+    if (extra) extra.innerHTML = extras.join('');
     const pronBtn = g('pop-pron-req');
     if (pronBtn) pronBtn.addEventListener('click', requestPron);
-    if (!isWord) prepareLines(res.text);
+    if (res.type !== 'word') prepareLines(res.text);
   }
 
   async function requestPron() {
@@ -447,17 +579,21 @@ window.App = (function () {
 
   function hidePopup() {
     const pop = g('sel-popup');
-    if (pop) pop.classList.add('hidden');
+    if (pop) {
+      pop.classList.add('hidden');
+      pop.classList.remove('expanded');
+      pop.style.transform = '';
+    }
     clearTimeout(analysisTimer);
     if (lookupCtrl) { try { lookupCtrl.abort(); } catch (e) {} lookupCtrl = null; }
     lookupToken++;
     TTS.stop();
     currentSel = null;
+    pendingFree = null;
     hideLines();
-    try {
-      const sel = window.getSelection();
-      if (sel && !sel.isCollapsed && sel.anchorNode && sel.anchorNode.parentElement && sel.anchorNode.parentElement.closest('#sel-popup')) sel.removeAllRanges();
-    } catch (e) {}
+    const fab = g('translate-fab');
+    if (fab) fab.classList.add('hidden');
+    if (window.TapSelect) TapSelect.setPopupOpen(false);
   }
 
   function initShortcuts() {
@@ -485,8 +621,9 @@ window.App = (function () {
       if (currentView === 'reader') {
         if (e.key === 'ArrowLeft' || e.key === 'PageDown') { e.preventDefault(); Viewer.nextPage(); }
         else if (e.key === 'ArrowRight' || e.key === 'PageUp') { e.preventDefault(); Viewer.prevPage(); }
-        else if (e.key === '+' || e.key === '=') { e.preventDefault(); Viewer.zoomBy(0.15); }
-        else if (e.key === '-') { e.preventDefault(); Viewer.zoomBy(-0.15); }
+        else if (e.key === '+' || e.key === '=') { e.preventDefault(); Viewer.zoomBy(0.25); }
+        else if (e.key === '-' || e.key === '−') { e.preventDefault(); Viewer.zoomBy(-0.25); }
+        else if (e.key === '0') { e.preventDefault(); Viewer.zoomFit(); }
       } else if (currentView === 'study') {
         if (e.key === 'f' || e.key === 'F') Study.flip();
         else if (e.key === '1') Study.rateCurrent(1);
@@ -503,6 +640,19 @@ window.App = (function () {
     if (n) Viewer.goToPage(n);
     input.value = '';
     input.blur();
+    const panel = g('page-panel');
+    if (panel) panel.classList.add('hidden');
+  }
+
+  function togglePagePanel() {
+    const panel = g('page-panel');
+    const fab = g('page-fab');
+    if (!panel || !fab) return;
+    panel.classList.toggle('hidden');
+    if (!panel.classList.contains('hidden')) {
+      const jump = g('rt-jump');
+      if (jump) { jump.value = ''; setTimeout(() => jump.focus(), 60); }
+    }
   }
 
   function initReaderToolbar() {
@@ -510,16 +660,48 @@ window.App = (function () {
     bind('rt-back', async () => { await Viewer.saveProgress(); location.hash = '#/library'; });
     bind('rt-prev', () => Viewer.prevPage());
     bind('rt-next', () => Viewer.nextPage());
-    bind('rt-zoom-in', () => Viewer.zoomBy(0.15));
-    bind('rt-zoom-out', () => Viewer.zoomBy(-0.15));
+    bind('rt-zoom-in', () => Viewer.zoomBy(0.25));
+    bind('rt-zoom-out', () => Viewer.zoomBy(-0.25));
+    bind('rt-zoom-fit', () => Viewer.zoomFit());
     bind('rt-highlight', () => Viewer.toggleHighlights());
     bind('rt-go', jumpToPageFromInput);
+    bind('page-fab', togglePagePanel);
+    bind('bigtext-close', () => { const p = g('bigtext-panel'); if (p) p.classList.add('hidden'); });
+    bind('bigtext-fab', () => {
+      const panel = g('bigtext-panel');
+      const bodyEl = g('bigtext-body');
+      if (!panel || !bodyEl) return;
+      if (panel.classList.contains('hidden')) {
+        bodyEl.textContent = (Viewer.getPageText && Viewer.getPageText()) || 'لا يوجد نص في هذه الصفحة';
+        const size = g('bigtext-size');
+        bodyEl.style.fontSize = (size ? size.value : 26) + 'px';
+        panel.classList.remove('hidden');
+      } else {
+        panel.classList.add('hidden');
+      }
+    });
+    const size = g('bigtext-size');
+    if (size) size.addEventListener('input', () => {
+      const bodyEl = g('bigtext-body');
+      if (bodyEl) bodyEl.style.fontSize = size.value + 'px';
+    });
     const jump = g('rt-jump');
     if (jump) {
       jump.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); jumpToPageFromInput(); }
       });
     }
+    const tipClose = g('tip-close');
+    if (tipClose) tipClose.addEventListener('click', () => {
+      const tip = g('reader-tip');
+      if (tip) tip.classList.add('hidden');
+    });
+    document.addEventListener('pointerdown', (e) => {
+      const panel = g('page-panel');
+      if (!panel || panel.classList.contains('hidden')) return;
+      if (e.target.closest && (e.target.closest('#page-panel') || e.target.closest('#page-fab'))) return;
+      panel.classList.add('hidden');
+    }, true);
   }
 
   function initSettingsButtons() {
@@ -603,6 +785,7 @@ window.App = (function () {
     Study.init();
     Backup.init();
     initPopup();
+    initSelection();
     initRouter();
     initNav();
     initShortcuts();

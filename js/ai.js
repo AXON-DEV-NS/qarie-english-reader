@@ -397,7 +397,8 @@ window.AI = (function () {
         entries: [], examples: [], synonyms: [], syllables: U.syllables(w), source: 'mini'
       };
     }
-    const dictP = dictApi(w);
+    const isSingle = !/\s/.test(w);
+    const dictP = isSingle ? dictApi(w) : Promise.resolve(null);
     const trP = translateFree(text).catch(() => '');
     let meaning = await trP;
     const dict = await Promise.race([dictP, U.sleep(1300).then(() => null)]);

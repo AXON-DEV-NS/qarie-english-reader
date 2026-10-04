@@ -7,6 +7,8 @@ window.Settings = (function () {
     volume: 100,
     autoSpeak: false,
     readerFontSize: 100,
+    selectionMode: 'auto',
+    autoOpenSelection: false,
     ai: {
       provider: 'none',
       baseUrl: 'https://api.openai.com/v1',
@@ -101,6 +103,8 @@ window.Settings = (function () {
     const volume = g('set-volume');
     const volLabel = g('vol-label');
     const font = g('set-font');
+    const selmode = g('set-selmode');
+    const autoopen = g('set-autoopen');
     const autospeak = g('set-autospeak');
     const provider = g('set-provider');
     const baseurl = g('set-baseurl');
@@ -126,6 +130,8 @@ window.Settings = (function () {
       document.documentElement.style.setProperty('--reader-scale', String(v / 100));
       save({ readerFontSize: v });
     });
+    if (selmode) selmode.addEventListener('change', () => save({ selectionMode: selmode.value }));
+    if (autoopen) autoopen.addEventListener('change', () => save({ autoOpenSelection: autoopen.checked }));
     if (autospeak) autospeak.addEventListener('change', () => save({ autoSpeak: autospeak.checked }));
     if (provider) provider.addEventListener('change', () => {
       const preset = AI_PRESETS[provider.value];
@@ -206,6 +212,9 @@ window.Settings = (function () {
     const volLabel = g('vol-label');
     if (volLabel) volLabel.textContent = (data.volume === null || data.volume === undefined ? 100 : data.volume) + '%';
     set('set-font', String(data.readerFontSize));
+    set('set-selmode', data.selectionMode || 'auto');
+    const autoopen = g('set-autoopen');
+    if (autoopen) autoopen.checked = !!data.autoOpenSelection;
     const autospeak = g('set-autospeak');
     if (autospeak) autospeak.checked = !!data.autoSpeak;
     set('set-provider', data.ai.provider);

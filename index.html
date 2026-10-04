@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=5">
+<link rel="stylesheet" href="css/styles.css?v=6">
 </head>
 <body>
 <div id="app">
@@ -61,7 +61,7 @@
         <button class="btn primary hero-btn" id="hero-upload">📤 ارفع ملفك الآن</button>
         <div class="steps">
           <div class="step"><span class="step-num">1</span><div><strong>ارفع الملف</strong><br><span class="muted small">PDF · Word · TXT · EPUB</span></div></div>
-          <div class="step"><span class="step-num">2</span><div><strong>حدّد كلمة أو جملة</strong><br><span class="muted small">بالماوس أو بالإصبع</span></div></div>
+          <div class="step"><span class="step-num">2</span><div><strong>المس كلمة</strong><br><span class="muted small">ثم اضغط «ترجمة»</span></div></div>
           <div class="step"><span class="step-num">3</span><div><strong>استمع واحفظ ⭐</strong><br><span class="muted small">ثم راجع ببطاقات ذكية</span></div></div>
         </div>
         <button class="btn small" id="hero-help">❓ كيف يعمل الموقع؟</button>
@@ -86,21 +86,19 @@
 
     <section id="view-reader" class="view">
       <div id="reader-toolbar" class="reader-toolbar">
-        <button class="btn small" id="rt-back" title="عودة للمكتبة">↩ رجوع</button>
+        <button class="btn small" id="rt-back" title="عودة للمكتبة">↩</button>
         <span id="reader-title" class="reader-title">—</span>
         <div class="spacer"></div>
-        <div class="tool-group" id="rt-pager">
-          <button class="btn small" id="rt-prev" title="الصفحة السابقة">السابق</button>
-          <span id="rt-page" class="page-ind">— / —</span>
-          <input id="rt-jump" class="page-input hidden" type="number" min="1" inputmode="numeric" placeholder="صفحة" title="انتقل إلى صفحة">
-          <button class="btn small hidden" id="rt-go" title="الانتقال إلى الصفحة">انتقال</button>
-          <button class="btn small" id="rt-next" title="الصفحة التالية">التالي</button>
-        </div>
-        <button class="btn small" id="rt-zoom-out" title="تصغير الصفحة">− تصغير</button>
-        <button class="btn small" id="rt-zoom-in" title="تكبير الصفحة">+ تكبير</button>
-        <button class="btn small primary" id="rt-highlight" title="إبراز الكلمات المحفوظة">🖍️ الإبراز</button>
+        <button class="btn small" id="rt-prev" title="الصفحة السابقة">السابق</button>
+        <button class="btn small" id="rt-next" title="الصفحة التالية">التالي</button>
+        <button class="btn small primary" id="rt-highlight" title="إبراز الكلمات المحفوظة">🖍️</button>
+        <button class="btn small" id="rt-help" title="مساعدة">❓</button>
       </div>
-      <div id="reader-tip" class="reader-tip">👆 حدد أي كلمة أو جملة لتعرف معناها، ثم استمع واحفظ ⭐</div>
+
+      <div id="reader-tip" class="reader-tip hidden">
+        <span>👆 المس أي كلمة ثم اضغط «ترجمة» لتعرف معناها وتسمعها</span>
+        <button class="tip-close" id="tip-close" title="إغلاق التلميح">✕</button>
+      </div>
       <div id="reader-hint" class="hint hidden"></div>
       <div id="reader-progress" class="reader-progress hidden"><div id="reader-progress-bar"></div></div>
       <div id="reader-scroll" class="reader-scroll">
@@ -109,6 +107,28 @@
           <p>لا يوجد ملف مفتوح حالياً.</p>
           <a class="btn primary" href="#/library">📚 اذهب إلى مكتبتي</a>
         </div>
+      </div>
+
+      <button id="page-fab" class="page-fab hidden" title="انتقل إلى صفحة"><span id="rt-page">— / —</span></button>
+      <div id="page-panel" class="page-panel hidden">
+        <input id="rt-jump" class="input ltr" type="number" min="1" inputmode="numeric" placeholder="صفحة">
+        <button class="btn small primary" id="rt-go">انتقال</button>
+      </div>
+
+      <div id="zoom-cluster" class="zoom-cluster">
+        <button class="fab-btn" id="rt-zoom-in" title="تكبير">＋</button>
+        <button class="fab-btn" id="rt-zoom-out" title="تصغير">－</button>
+        <button class="fab-btn" id="rt-zoom-fit" title="ملء العرض">⛶</button>
+        <button class="fab-btn" id="bigtext-fab" title="نص مكبّر">Aa</button>
+      </div>
+
+      <div id="bigtext-panel" class="bigtext-panel hidden">
+        <div class="row between">
+          <strong>🔎 نص مكبّر</strong>
+          <button class="icon-btn" id="bigtext-close" title="إغلاق">✕</button>
+        </div>
+        <input type="range" id="bigtext-size" min="18" max="48" step="2" value="26">
+        <div id="bigtext-body" class="bigtext-body"></div>
       </div>
     </section>
 
@@ -200,11 +220,18 @@
       </div>
 
       <div class="card">
-        <h3>🎨 المظهر</h3>
+        <h3>🎨 المظهر والتحديد</h3>
         <div class="field"><label for="set-theme">الوضع</label>
           <select id="set-theme" class="input"><option value="light">نهاري (فاتح)</option><option value="dark">ليلي</option></select></div>
         <div class="field"><label for="set-font">حجم خط القارئ</label>
           <input type="range" id="set-font" min="80" max="160" step="10"></div>
+        <div class="field"><label for="set-selmode">طريقة التحديد</label>
+          <select id="set-selmode" class="input">
+            <option value="auto">تلقائي (لمس على الموبايل، سحب على الكمبيوتر)</option>
+            <option value="tap">تحديد بلمسة — موصى به على الموبايل</option>
+            <option value="free">تحديد حر بالسحب</option>
+          </select></div>
+        <label class="check"><input type="checkbox" id="set-autoopen"> فتح نافذة المعنى تلقائياً بعد ثبات التحديد</label>
       </div>
 
       <div class="card">
@@ -217,7 +244,7 @@
           <select id="set-sent-rate" class="input"><option value="0.6">0.6x — بطيء جداً</option><option value="0.8">0.8x — واضح (موصى به)</option><option value="1">1x — عادي</option></select></div>
         <div class="field"><label for="set-volume">مستوى الصوت: <span id="vol-label">100%</span></label>
           <input type="range" id="set-volume" min="0" max="100" step="5" value="100"></div>
-        <label class="check"><input type="checkbox" id="set-autospeak"> نطق الكلمة تلقائياً عند تحديدها</label>
+        <label class="check"><input type="checkbox" id="set-autospeak"> نطق الكلمة تلقائياً عند فتح نافذتها</label>
       </div>
 
       <div class="card">
@@ -241,7 +268,7 @@
 
       <div class="card">
         <h3>🤖 الذكاء الاصطناعي (للشرح والترجمة)</h3>
-        <p class="muted small">بدون مفتاح يعمل الموقع بترجمة مجانية + قاموس محلي. لا يُرسل أي نص إلا عند تحديدك.</p>
+        <p class="muted small">بدون مفتاح يعمل الموقع بترجمة مجانية + قاموس محلي. لا يُرسل أي نص إلا عند ضغطك «ترجمة».</p>
         <div class="field"><label for="set-provider">المزوّد</label>
           <select id="set-provider" class="input">
             <option value="none">بدون — مجاني فقط</option>
@@ -309,7 +336,7 @@
           <li><kbd>S</kbd> حفظ النص المحدد في قاموسي</li>
           <li><kbd>Esc</kbd> إغلاق النافذة</li>
           <li><kbd>←</kbd> / <kbd>→</kbd> التنقل بين الصفحات في القارئ</li>
-          <li><kbd>+</kbd> / <kbd>-</kbd> تكبير وتصغير</li>
+          <li><kbd>+</kbd> / <kbd>−</kbd> تكبير وتصغير · <kbd>0</kbd> ملء العرض</li>
           <li><kbd>F</kbd> قلب بطاقة المراجعة</li>
           <li><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> تقييم البطاقة: صعبة/متوسطة/سهلة</li>
         </ul>
@@ -331,34 +358,53 @@
 
 </div>
 
+<div id="sel-layer" class="sel-layer"></div>
+
+<div id="tap-bar" class="tap-bar hidden" dir="rtl">
+  <button class="tap-btn" data-act="expand">＋ كلمة</button>
+  <button class="tap-btn" data-act="shrink">－ كلمة</button>
+  <button class="tap-btn" data-act="sentence">الجملة</button>
+  <button class="tap-btn" data-act="paragraph">الفقرة</button>
+  <button class="tap-btn primary" data-act="translate">🔊 ترجمة</button>
+</div>
+
+<button id="translate-fab" class="translate-fab hidden" dir="rtl">🔊 ترجمة</button>
+
 <div id="sel-popup" class="hidden" dir="rtl" role="dialog" aria-label="شرح النص المحدد">
+  <div class="pop-handle" id="pop-handle" title="اسحب لأسفل للإغلاق"></div>
   <div class="popup-head">
     <span id="pop-type" class="chip"></span>
     <span id="pop-source" class="muted tiny"></span>
     <div class="spacer"></div>
-    <button class="btn small" id="pop-copy" title="نسخ النص المحدد">⧉ نسخ</button>
+    <button class="btn small" id="pop-copy" title="نسخ النص المحدد">⧉</button>
     <button class="btn small" id="pop-close" title="إغلاق النافذة">✕ إغلاق</button>
   </div>
   <div id="pop-text" class="pop-text en"></div>
+  <div id="pop-body" class="pop-body">
+    <div class="loading-inline">جارٍ تحضير الشرح…</div>
+  </div>
   <div class="pop-audio">
     <button class="btn small" id="pop-play" title="استماع للنص">🔊 استماع</button>
     <button class="btn small hidden" id="pop-stop" title="إيقاف النطق">⏹ إيقاف</button>
-    <button class="btn small" id="pop-syl" title="نطق مقطعاً مقطعاً">🔤 مقاطع</button>
-    <button class="btn small" id="pop-spell" title="تهجئة حرفاً حرفاً">🔡 تهجئة</button>
     <button class="btn small primary" id="pop-save" title="حفظ في قاموسي">⭐ حفظ</button>
+    <button class="btn small" id="pop-more-btn" title="المزيد من التفاصيل">المزيد ▾</button>
   </div>
-  <div class="pop-rates">
-    <span class="muted tiny">السرعة:</span>
-    <button class="chip-btn" data-rate="0.5">0.5x</button>
-    <button class="chip-btn active" data-rate="0.75">0.75x</button>
-    <button class="chip-btn" data-rate="1">1x</button>
-    <label class="vol-wrap" title="مستوى الصوت">🔉 <input type="range" id="pop-volume" min="0" max="100" step="5" value="100"></label>
-    <button class="chip-btn" id="pop-repeat" title="إعادة النطق">🔁 إعادة</button>
+  <div id="pop-more-body" class="pop-more hidden">
+    <div class="pop-rates">
+      <span class="muted tiny">السرعة:</span>
+      <button class="chip-btn" data-rate="0.5">0.5x</button>
+      <button class="chip-btn active" data-rate="0.75">0.75x</button>
+      <button class="chip-btn" data-rate="1">1x</button>
+      <label class="vol-wrap" title="مستوى الصوت">🔉 <input type="range" id="pop-volume" min="0" max="100" step="5" value="100"></label>
+      <button class="chip-btn" id="pop-repeat" title="إعادة النطق">🔁 إعادة</button>
+    </div>
+    <div class="pop-actions">
+      <button class="btn small" id="pop-syl" title="نطق مقطعاً مقطعاً">🔤 مقاطع</button>
+      <button class="btn small" id="pop-spell" title="تهجئة حرفاً حرفاً">🔡 تهجئة</button>
+    </div>
+    <div id="pop-extra" class="pop-extra"></div>
   </div>
   <div id="pop-lines" class="speak-lines hidden"></div>
-  <div id="pop-body" class="pop-body">
-    <div class="muted small">جارٍ تحضير الشرح…</div>
-  </div>
 </div>
 
 <div id="toast-wrap"></div>
@@ -369,17 +415,18 @@
 <script src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.2/dist/docx-preview.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js"></script>
 
-<script src="js/util.js?v=5"></script>
-<script src="js/db.js?v=5"></script>
-<script src="js/settings.js?v=5"></script>
-<script src="js/ai.js?v=5"></script>
-<script src="js/tts.js?v=5"></script>
-<script src="js/viewer.js?v=5"></script>
-<script src="js/library.js?v=5"></script>
-<script src="js/dictionary.js?v=5"></script>
-<script src="js/study.js?v=5"></script>
-<script src="js/sync.js?v=5"></script>
-<script src="js/backup.js?v=5"></script>
-<script src="js/app.js?v=5"></script>
+<script src="js/util.js?v=6"></script>
+<script src="js/db.js?v=6"></script>
+<script src="js/settings.js?v=6"></script>
+<script src="js/ai.js?v=6"></script>
+<script src="js/tts.js?v=6"></script>
+<script src="js/viewer.js?v=6"></script>
+<script src="js/tapselect.js?v=6"></script>
+<script src="js/library.js?v=6"></script>
+<script src="js/dictionary.js?v=6"></script>
+<script src="js/study.js?v=6"></script>
+<script src="js/sync.js?v=6"></script>
+<script src="js/backup.js?v=6"></script>
+<script src="js/app.js?v=6"></script>
 </body>
 </html>

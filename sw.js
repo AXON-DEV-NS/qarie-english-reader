@@ -1,9 +1,9 @@
-const VERSION = 'qarie-v5';
+const VERSION = 'qarie-v6';
 const SHELL = [
-  './', './index.html', './manifest.webmanifest', './css/styles.css?v=5',
-  './js/util.js?v=5', './js/db.js?v=5', './js/settings.js?v=5', './js/ai.js?v=5',
-  './js/tts.js?v=5', './js/viewer.js?v=5', './js/library.js?v=5', './js/dictionary.js?v=5',
-  './js/study.js?v=5', './js/sync.js?v=5', './js/backup.js?v=5', './js/app.js?v=5',
+  './', './index.html', './manifest.webmanifest', './css/styles.css?v=6',
+  './js/util.js?v=6', './js/db.js?v=6', './js/settings.js?v=6', './js/ai.js?v=6',
+  './js/tts.js?v=6', './js/viewer.js?v=6', './js/tapselect.js?v=6', './js/library.js?v=6', './js/dictionary.js?v=6',
+  './js/study.js?v=6', './js/sync.js?v=6', './js/backup.js?v=6', './js/app.js?v=6',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-180.png'
 ];
 const CDN = [

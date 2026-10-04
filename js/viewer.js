@@ -34,7 +34,13 @@ window.Viewer = (function () {
 
   function g(id) { return document.getElementById(id); }
   function scrollEl() { return g('reader-scroll'); }
-  function pdfQuality() { return U.clamp(Math.max(window.devicePixelRatio || 1, 2), 2, 3); }
+  function pdfQuality(vp) {
+    const base = U.clamp(Math.max(window.devicePixelRatio || 1, 2), 2, 3);
+    if (!vp) return base;
+    const maxPixels = 16000000;
+    const area = Math.max(1, vp.width * vp.height);
+    return U.clamp(Math.min(base, Math.sqrt(maxPixels / area)), 1, base);
+  }
 
   function setProgress(pct, show) {
     const wrap = g('reader-progress');
@@ -112,6 +118,7 @@ window.Viewer = (function () {
       U.toast('تعذّر فتح الملف: ' + (err.message || err), 'error');
       container.innerHTML = '<div class="empty big"><p>تعذّر عرض هذا الملف.</p><p class="small">' + U.esc(err.message || '') + '</p></div>';
     }
+    document.dispatchEvent(new Event('viewer:rerender'));
     bindContainer();
     if (st.hlEnabled) applyHighlights();
   }
@@ -139,9 +146,17 @@ window.Viewer = (function () {
     const pager = g('rt-pager');
     const zoomIn = g('rt-zoom-in');
     const zoomOut = g('rt-zoom-out');
+    const prev = g('rt-prev');
+    const next = g('rt-next');
+    const cluster = g('zoom-cluster');
+    const fab = g('page-fab');
     if (pager) pager.classList.toggle('hidden', !(isPdf || isEpub));
     if (zoomIn) zoomIn.classList.toggle('hidden', !isPdf);
     if (zoomOut) zoomOut.classList.toggle('hidden', !isPdf);
+    if (cluster) cluster.classList.toggle('hidden', !isPdf);
+    if (prev) prev.classList.toggle('hidden', !(isPdf || isEpub));
+    if (next) next.classList.toggle('hidden', !(isPdf || isEpub));
+    if (fab) fab.classList.toggle('hidden', !(isPdf || isEpub));
     updatePageLabel();
   }
 
@@ -155,6 +170,8 @@ window.Viewer = (function () {
       if (isPdf) jump.max = String(st.numPages || '');
     }
     if (go) go.classList.toggle('hidden', !isPdf);
+    const fab = g('page-fab');
+    if (fab) fab.classList.toggle('hidden', !(st.ext === 'pdf' && !!st.pdf) && st.ext !== 'epub');
     if (!ind) return;
     if (isPdf) ind.textContent = st.pdfCurrent + ' / ' + st.numPages;
     else if (st.ext === 'epub' && st.epubLoc && st.epubLoc.start) ind.textContent = Math.round((st.epubLoc.start.percentage || 0) * 100) + '%';
@@ -215,7 +232,7 @@ window.Viewer = (function () {
 
   function layoutPdfPages() {
     const sc = scrollEl();
-    const avail = Math.max(220, (sc ? sc.clientWidth : 600) - 24);
+    const avail = Math.max(220, sc ? sc.clientWidth : 600);
     st.pdfFit = avail / st.pdfBase.w;
     st.pdfScale = U.clamp(st.pdfFit * st.pdfZoom, 0.1, 10);
     st.pdfPages.forEach((e) => {
@@ -230,6 +247,7 @@ window.Viewer = (function () {
       e.wrap.style.marginBottom = PAGE_GAP + 'px';
     });
     recomputeTops();
+    document.dispatchEvent(new Event('viewer:rerender'));
   }
 
   function updatePdfCurrent() {
@@ -278,7 +296,7 @@ window.Viewer = (function () {
         recomputeTops();
       }
       const vp = page.getViewport({ scale: st.pdfScale });
-      const q = pdfQuality();
+      const q = pdfQuality(vp);
       const rvp = page.getViewport({ scale: st.pdfScale * q });
       const canvas = e.canvas;
       const ctx = canvas.getContext('2d', { alpha: false });
@@ -320,6 +338,19 @@ window.Viewer = (function () {
     } finally {
       e.rendering = false;
     }
+  }
+
+  function trimStaleCanvases() {
+    st.pdfPages.forEach((e) => {
+      if (e.rendered || e.rendering) return;
+      if (e.canvas && e.canvas.width > 2) {
+        e.canvas.width = 1;
+        e.canvas.height = 1;
+        e.canvas.style.width = '0px';
+        e.canvas.style.height = '0px';
+        if (e.textLayer) e.textLayer.innerHTML = '';
+      }
+    });
   }
 
   function renderVisiblePages(force) {
@@ -385,13 +416,74 @@ window.Viewer = (function () {
     const anchor = anchorNum || st.pdfCurrent;
     const a0 = st.pdfPages[anchor - 1];
     const rel = a0 ? U.clamp((sc.scrollTop - a0.top) / Math.max(1, a0.h), 0, 1) : 0;
-    st.pdfZoom = U.clamp(z, 0.5, 4);
+    st.pdfZoom = U.clamp(z, 0.5, 5);
     layoutPdfPages();
     const a1 = st.pdfPages[anchor - 1];
     if (a1) sc.scrollTop = a1.top + rel * a1.h;
     renderVisiblePages(true);
     updatePageLabel();
     scheduleSave();
+  }
+
+  function zoomAt(z, clientX, clientY) {
+    if (st.ext !== 'pdf' || !st.pdf) return;
+    const sc = scrollEl();
+    const newZ = U.clamp(z, 0.5, 5);
+    const ratio = newZ / st.pdfZoom;
+    const cx = sc.scrollLeft + clientX;
+    const cy = sc.scrollTop + clientY;
+    st.pdfZoom = newZ;
+    layoutPdfPages();
+    renderVisiblePages(true);
+    trimStaleCanvases();
+    sc.scrollLeft = Math.max(0, cx * ratio - clientX);
+    sc.scrollTop = Math.max(0, cy * ratio - clientY);
+    updatePageLabel();
+    scheduleSave();
+  }
+  function zoomFit() {
+    if (st.ext !== 'pdf' || !st.pdf) return;
+    st.pdfZoom = 1;
+    layoutPdfPages();
+    const sc = scrollEl();
+    sc.scrollLeft = 0;
+    renderVisiblePages(true);
+    trimStaleCanvases();
+    updatePageLabel();
+    scheduleSave();
+  }
+  function doubleTapZoom(clientX, clientY) {
+    if (st.ext !== 'pdf' || !st.pdf) return;
+    if (st.pdfZoom > 1.05) zoomAt(1, clientX, clientY);
+    else zoomAt(2.5, clientX, clientY);
+  }
+  function ensureVisible(rect, bottomInset) {
+    const sc = scrollEl();
+    if (!sc || !rect) return;
+    const topLimit = 56;
+    const bottom = (bottomInset || 0) + 16;
+    const scTop = sc.scrollTop;
+    const scRect = sc.getBoundingClientRect();
+    const rTop = rect.top - scRect.top + scTop;
+    const rBottom = rTop + (rect.height || 0);
+    const viewBottom = scTop + sc.clientHeight;
+    if (rBottom > viewBottom - bottom) sc.scrollTop = Math.max(0, rBottom - sc.clientHeight + bottom);
+    else if (rTop < scTop + topLimit) sc.scrollTop = Math.max(0, rTop - topLimit);
+  }
+  function getPageText() {
+    try {
+      if (st.ext === 'pdf' && st.pdf) {
+        const e = st.pdfPages[st.pdfCurrent - 1];
+        return e && e.textLayer ? e.textLayer.innerText : '';
+      }
+      if (st.ext === 'epub' && st.rendition) {
+        const contents = st.rendition.getContents();
+        if (contents && contents[0] && contents[0].document && contents[0].document.body) {
+          return contents[0].document.body.innerText;
+        }
+      }
+      return st.container ? st.container.innerText : '';
+    } catch (e) { return ''; }
   }
 
 
@@ -661,9 +753,8 @@ window.Viewer = (function () {
     const c = st.container;
     if (!c || c._bound) return;
     c._bound = true;
-    c.addEventListener('pointerup', handleContainerSelection);
-    c.addEventListener('touchend', handleContainerSelection);
     document.addEventListener('selectionchange', U.debounce(() => {
+      if (window.TapSelect && TapSelect.isTapMode()) return;
       if (st.ext === 'epub') return;
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed || !sel.rangeCount) return;
@@ -673,7 +764,7 @@ window.Viewer = (function () {
       if (!st.container || !st.container.contains(range.commonAncestorContainer)) return;
       const rect = range.getBoundingClientRect();
       emit(text, { left: rect.left, top: rect.top, width: rect.width, height: rect.height, bottom: rect.bottom });
-    }, 250));
+    }, 800));
     c.addEventListener('click', (e) => {
       const mark = e.target && e.target.closest ? e.target.closest('mark.hl') : null;
       if (!mark) return;
@@ -683,11 +774,16 @@ window.Viewer = (function () {
       emit(mark.dataset.word || mark.textContent, { left: r.left, top: r.top, width: r.width, height: r.height, bottom: r.bottom });
     });
     const sc = scrollEl();
+    let lastTop = 0;
     const onScroll = U.debounce(() => {
       if (st.ext === 'pdf') {
         updatePdfCurrent();
         cleanupPdfMemory();
       }
+      const top = sc.scrollTop;
+      if (top > 70 && top > lastTop + 6) document.body.classList.add('hide-bar');
+      else if (top < lastTop - 6 || top <= 40) document.body.classList.remove('hide-bar');
+      lastTop = top;
       scheduleSave();
     }, 130);
     sc.addEventListener('scroll', onScroll, { passive: true });
@@ -700,26 +796,41 @@ window.Viewer = (function () {
     let startDist = 0;
     let startZoom = 1;
     let preview = 1;
+    let mid = { x: 0, y: 0 };
     const dist = (t) => Math.sqrt(Math.pow(t[0].clientX - t[1].clientX, 2) + Math.pow(t[0].clientY - t[1].clientY, 2));
+    const midOf = (t) => ({ x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 });
+    function applyPreview() {
+      if (!st.pdfPagesEl) return;
+      const r = st.pdfPagesEl.getBoundingClientRect();
+      st.pdfPagesEl.style.transformOrigin = (mid.x - r.left) + 'px ' + (mid.y - r.top) + 'px';
+      st.pdfPagesEl.style.transform = 'scale(' + preview.toFixed(3) + ')';
+    }
     sc.addEventListener('touchstart', (e) => {
       if (st.ext !== 'pdf' || e.touches.length !== 2) return;
       startDist = dist(e.touches);
       startZoom = st.pdfZoom;
+      mid = midOf(e.touches);
       preview = 1;
     }, { passive: true });
     sc.addEventListener('touchmove', (e) => {
       if (st.ext !== 'pdf' || !startDist || e.touches.length !== 2) return;
       e.preventDefault();
-      preview = U.clamp(dist(e.touches) / startDist, 0.4, 3);
-      if (st.pdfPagesEl) st.pdfPagesEl.style.transform = 'scale(' + preview.toFixed(3) + ')';
+      preview = U.clamp(dist(e.touches) / startDist, 0.25, 4);
+      mid = midOf(e.touches);
+      applyPreview();
     }, { passive: false });
     const endPinch = () => {
       if (st.ext !== 'pdf' || !startDist) return;
       const factor = preview;
+      const mx = mid.x;
+      const my = mid.y;
       startDist = 0;
       preview = 1;
-      if (st.pdfPagesEl) st.pdfPagesEl.style.transform = '';
-      if (Math.abs(factor - 1) > 0.03) zoomTo(startZoom * factor);
+      if (st.pdfPagesEl) {
+        st.pdfPagesEl.style.transform = '';
+        st.pdfPagesEl.style.transformOrigin = '';
+      }
+      if (Math.abs(factor - 1) > 0.03) zoomAt(startZoom * factor, mx, my);
     };
     sc.addEventListener('touchend', endPinch);
     sc.addEventListener('touchcancel', endPinch);
@@ -727,20 +838,27 @@ window.Viewer = (function () {
       if (st.ext !== 'pdf') return;
       e.preventDefault();
       startZoom = st.pdfZoom;
+      mid = { x: e.clientX, y: e.clientY };
       preview = 1;
     });
     sc.addEventListener('gesturechange', (e) => {
       if (st.ext !== 'pdf') return;
       e.preventDefault();
-      preview = U.clamp(e.scale, 0.4, 3);
-      if (st.pdfPagesEl) st.pdfPagesEl.style.transform = 'scale(' + preview.toFixed(3) + ')';
+      preview = U.clamp(e.scale, 0.25, 4);
+      mid = { x: e.clientX, y: e.clientY };
+      applyPreview();
     });
     sc.addEventListener('gestureend', () => {
       if (st.ext !== 'pdf' || preview === 1) return;
       const factor = preview;
+      const mx = mid.x;
+      const my = mid.y;
       preview = 1;
-      if (st.pdfPagesEl) st.pdfPagesEl.style.transform = '';
-      if (Math.abs(factor - 1) > 0.03) zoomTo(startZoom * factor);
+      if (st.pdfPagesEl) {
+        st.pdfPagesEl.style.transform = '';
+        st.pdfPagesEl.style.transformOrigin = '';
+      }
+      if (Math.abs(factor - 1) > 0.03) zoomAt(startZoom * factor, mx, my);
     });
   }
 
@@ -875,7 +993,8 @@ window.Viewer = (function () {
   function currentFile() { return st.file; }
 
   return {
-    open, close, goTo, goToPage, nextPage, prevPage, zoomBy,
+    open, close, goTo, goToPage, nextPage, prevPage, zoomBy, zoomFit, doubleTapZoom,
+    ensureVisible, getPageText,
     applyHighlights, toggleHighlights, getContext, currentLocation, saveProgress,
     currentFile, getState, updateToolbar
   };
