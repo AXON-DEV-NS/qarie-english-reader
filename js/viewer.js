@@ -492,8 +492,14 @@ window.Viewer = (function () {
       scheduleSave();
     });
     st.rendition.on('selected', (cfiRange, contents) => emitSelectionFromDoc(contents.document, contents));
-    await st.book.ready;
-    await st.rendition.display((loc && loc.cfi) || undefined);
+    await Promise.race([
+      st.book.ready,
+      U.sleep(12000).then(() => { throw new Error('تعذّر قراءة ملف EPUB — قد يكون الملف تالفاً'); })
+    ]);
+    await Promise.race([
+      st.rendition.display((loc && loc.cfi) || undefined),
+      U.sleep(15000).then(() => { throw new Error('تأخّر عرض ملف EPUB — جرّب ملفاً آخر'); })
+    ]);
   }
 
   function emitSelectionFromDoc(doc, contents) {
