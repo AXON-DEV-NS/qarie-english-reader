@@ -1,14 +1,14 @@
-const VERSION = 'qarie-v1';
+const VERSION = 'qarie-v2';
 const SHELL = [
-  './', './index.html', './manifest.webmanifest', './css/styles.css',
-  './js/util.js', './js/db.js', './js/settings.js', './js/ai.js', './js/tts.js',
-  './js/viewer.js', './js/library.js', './js/dictionary.js', './js/study.js',
-  './js/sync.js', './js/backup.js', './js/app.js',
+  './', './index.html', './manifest.webmanifest', './css/styles.css?v=2',
+  './js/util.js?v=2', './js/db.js?v=2', './js/settings.js?v=2', './js/ai.js?v=2',
+  './js/tts.js?v=2', './js/viewer.js?v=2', './js/library.js?v=2', './js/dictionary.js?v=2',
+  './js/study.js?v=2', './js/sync.js?v=2', './js/backup.js?v=2', './js/app.js?v=2',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-180.png'
 ];
 const CDN = [
-  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
+  'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',
+  'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js',
   'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js',
   'https://cdn.jsdelivr.net/npm/docx-preview@0.3.2/dist/docx-preview.min.js',
   'https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js',

@@ -328,6 +328,15 @@ window.App = (function () {
     });
   }
 
+  function jumpToPageFromInput() {
+    const input = g('rt-jump');
+    if (!input) return;
+    const n = parseInt(input.value, 10);
+    if (n) Viewer.goToPage(n);
+    input.value = '';
+    input.blur();
+  }
+
   function initReaderToolbar() {
     const bind = (id, fn) => { const n = g(id); if (n) n.addEventListener('click', fn); };
     bind('rt-back', async () => { await Viewer.saveProgress(); location.hash = '#/library'; });
@@ -337,6 +346,13 @@ window.App = (function () {
     bind('rt-zoom-out', () => Viewer.zoomBy(-0.15));
     bind('rt-ocr', () => Viewer.runOcr());
     bind('rt-highlight', () => Viewer.toggleHighlights());
+    bind('rt-go', jumpToPageFromInput);
+    const jump = g('rt-jump');
+    if (jump) {
+      jump.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); jumpToPageFromInput(); }
+      });
+    }
   }
 
   function initSettingsButtons() {

@@ -1,6 +1,11 @@
 window.Viewer = (function () {
-  const WORKER_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const PDF_VERSION = '3.11.174';
+  const PDF_BASE = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@' + PDF_VERSION + '/';
+  const WORKER_SRC = PDF_BASE + 'build/pdf.worker.min.js';
+  const CMAP_URL = PDF_BASE + 'cmaps/';
+  const STANDARD_FONTS_URL = PDF_BASE + 'standard_fonts/';
   const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'];
+  const PAGE_GAP = 14;
   const TESS = { worker: null, promise: null };
 
   const st = {
@@ -8,24 +13,33 @@ window.Viewer = (function () {
     ext: '',
     container: null,
     pdf: null,
-    page: 1,
     numPages: 0,
-    zoom: 1,
-    canvas: null,
-    textLayer: null,
-    renderTask: null,
+    pdfZoom: 1,
+    pdfFit: 1,
+    pdfScale: 1,
+    pdfBase: { w: 612, h: 792 },
+    pdfPages: [],
+    pdfPagesEl: null,
+    pdfObserver: null,
+    pdfCurrent: 1,
     book: null,
     rendition: null,
     epubLoc: null,
     img: null,
     imgNat: null,
     objectUrl: null,
-    renderSeq: 0,
+    canvas: null,
+    textLayer: null,
     hlEnabled: true
   };
 
   function g(id) { return document.getElementById(id); }
   function scrollEl() { return g('reader-scroll'); }
+  function fileOcr(key) {
+    if (!st.file || !st.file.ocr) return null;
+    return st.file.ocr[String(key)] || null;
+  }
+  function pdfQuality() { return U.clamp(Math.max(window.devicePixelRatio || 1, 2), 2, 3); }
 
   function setProgress(pct, show) {
     const wrap = g('reader-progress');
@@ -45,9 +59,19 @@ window.Viewer = (function () {
     h.innerHTML = html;
     h.classList.remove('hidden');
   }
-
   function parseExt(name) { return U.extOf(name); }
   function isImageExt(e) { return IMAGE_EXT.indexOf(e) >= 0; }
+
+  function ensurePdfJs() {
+    if (!window.pdfjsLib) return false;
+    try {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_SRC;
+      if (window.pdfjsLib.version && window.pdfjsLib.version !== PDF_VERSION) {
+        console.warn('pdf.js version mismatch', window.pdfjsLib.version, PDF_VERSION);
+      }
+    } catch (e) {}
+    return true;
+  }
 
   async function blobToArrayBuffer(blob) {
     if (blob instanceof ArrayBuffer) return blob;
@@ -60,12 +84,16 @@ window.Viewer = (function () {
     await close(true);
     st.file = file;
     st.ext = file.ext || parseExt(file.name);
-    st.zoom = 1;
-    st.page = 1;
+    st.pdfZoom = 1;
+    st.numPages = 0;
+    st.pdfCurrent = 1;
+    st.pdfPages = [];
     st.epubLoc = null;
     st.imgNat = null;
     const container = g('viewer-container');
     container.innerHTML = '';
+    container.classList.toggle('pdf-mode', st.ext === 'pdf');
+    container.setAttribute('dir', 'ltr');
     st.container = container;
     const empty = g('reader-empty');
     if (empty) empty.classList.add('hidden');
@@ -93,127 +121,290 @@ window.Viewer = (function () {
     if (st.hlEnabled) applyHighlights();
   }
 
-  function ensurePdfJs() {
-    if (window.pdfjsLib) {
-      try { window.pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_SRC; } catch (e) {}
-      return true;
-    }
-    return false;
-  }
-
   async function close(silent) {
-    if (st.renderTask) { try { st.renderTask.cancel(); } catch (e) {} st.renderTask = null; }
-    if (!silent) await saveProgress();
+    if (st.pdfObserver) { try { st.pdfObserver.disconnect(); } catch (e) {} st.pdfObserver = null; }
+    st.pdfPages.forEach((e) => {
+      if (e.task) { try { e.task.cancel(); } catch (err) {} e.task = null; }
+    });
     if (st.rendition) { try { st.rendition.destroy(); } catch (e) {} st.rendition = null; }
     if (st.book) { try { st.book.destroy(); } catch (e) {} st.book = null; }
     if (st.pdf) { try { st.pdf.destroy(); } catch (e) {} st.pdf = null; }
     if (st.objectUrl) { URL.revokeObjectURL(st.objectUrl); st.objectUrl = null; }
     TTS.stop();
-    st.canvas = null; st.textLayer = null; st.img = null;
+    st.pdfPages = [];
+    st.pdfPagesEl = null;
+    st.canvas = null;
+    st.textLayer = null;
+    st.img = null;
   }
 
   function updateToolbar() {
     const isPdf = st.ext === 'pdf';
     const isEpub = st.ext === 'epub';
     const pager = g('rt-pager');
-    const zoom = g('rt-zoom-in');
+    const zoomIn = g('rt-zoom-in');
+    const zoomOut = g('rt-zoom-out');
     const ocr = g('rt-ocr');
     if (pager) pager.classList.toggle('hidden', !(isPdf || isEpub));
-    if (zoom) zoom.classList.toggle('hidden', !isPdf);
+    if (zoomIn) zoomIn.classList.toggle('hidden', !isPdf);
+    if (zoomOut) zoomOut.classList.toggle('hidden', !isPdf);
     if (ocr) ocr.classList.toggle('hidden', !(isPdf || isImageExt(st.ext)));
-    const next = g('rt-next'); const prev = g('rt-prev');
-    if (next) next.classList.toggle('hidden', !(isPdf || isEpub));
-    if (prev) prev.classList.toggle('hidden', !(isPdf || isEpub));
     updatePageLabel();
   }
 
   function updatePageLabel() {
     const ind = g('rt-page');
-    if (!ind) return;
-    if (st.ext === 'pdf' && st.numPages) {
-      ind.textContent = st.page + ' / ' + st.numPages;
-    } else if (st.ext === 'epub' && st.epubLoc && st.epubLoc.start) {
-      ind.textContent = Math.round((st.epubLoc.start.percentage || 0) * 100) + '%';
-    } else {
-      ind.textContent = '';
+    const jump = g('rt-jump');
+    const go = g('rt-go');
+    const isPdf = st.ext === 'pdf' && !!st.pdf;
+    if (jump) {
+      jump.classList.toggle('hidden', !isPdf);
+      if (isPdf) jump.max = String(st.numPages || '');
     }
+    if (go) go.classList.toggle('hidden', !isPdf);
+    if (!ind) return;
+    if (isPdf) ind.textContent = st.pdfCurrent + ' / ' + st.numPages;
+    else if (st.ext === 'epub' && st.epubLoc && st.epubLoc.start) ind.textContent = Math.round((st.epubLoc.start.percentage || 0) * 100) + '%';
+    else ind.textContent = '';
   }
 
   async function openPdf(file, loc) {
     const buf = await blobToArrayBuffer(file.blob);
-    st.pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+    st.pdf = await window.pdfjsLib.getDocument({
+      data: buf,
+      cMapUrl: CMAP_URL,
+      cMapPacked: true,
+      standardFontDataUrl: STANDARD_FONTS_URL
+    }).promise;
     st.numPages = st.pdf.numPages;
-    const wrap = U.el('div', { class: 'pdf-page-wrap' });
-    const canvas = U.el('canvas', { class: 'pdf-canvas' });
-    const tl = U.el('div', { class: 'textLayer' });
-    wrap.appendChild(canvas);
-    wrap.appendChild(tl);
-    st.container.appendChild(wrap);
-    st.canvas = canvas;
-    st.textLayer = tl;
-    await renderPage((loc && loc.page) || 1);
-    if (loc && loc.scroll) scrollEl().scrollTop = loc.scroll;
+    const p1 = await st.pdf.getPage(1);
+    const vp1 = p1.getViewport({ scale: 1 });
+    st.pdfBase = { w: vp1.width, h: vp1.height };
+    const pagesEl = U.el('div', { class: 'pdf-pages' });
+    pagesEl.setAttribute('dir', 'ltr');
+    st.container.appendChild(pagesEl);
+    st.pdfPagesEl = pagesEl;
+    st.pdfPages = [];
+    for (let i = 1; i <= st.numPages; i++) {
+      const wrap = U.el('div', { class: 'pdf-page-wrap', dataset: { page: String(i) } });
+      const canvas = U.el('canvas', { class: 'pdf-canvas' });
+      const tl = U.el('div', { class: 'textLayer' });
+      tl.setAttribute('dir', 'ltr');
+      wrap.appendChild(canvas);
+      wrap.appendChild(tl);
+      pagesEl.appendChild(wrap);
+      st.pdfPages.push({
+        num: i, wrap: wrap, canvas: canvas, textLayer: tl,
+        rendered: false, rendering: false, task: null,
+        w: st.pdfBase.w, h: st.pdfBase.h, top: 0, empty: false,
+        renderToken: 0
+      });
+    }
+    layoutPdfPages();
+    if (loc && loc.page && st.pdfPages[loc.page - 1]) {
+      const e = st.pdfPages[U.clamp(loc.page, 1, st.numPages) - 1];
+      scrollEl().scrollTop = e.top + (loc.offset || 0);
+      st.pdfCurrent = e.num;
+    } else if (loc && loc.scroll) {
+      scrollEl().scrollTop = loc.scroll;
+    }
+    updatePdfCurrent();
+    setupPdfObserver();
+    renderVisiblePages();
+    updatePageLabel();
+    setProgress(progressPercent(currentLocation()), true);
   }
 
-  async function renderPage(n) {
-    if (!st.pdf) return;
-    n = U.clamp(parseInt(n, 10) || 1, 1, st.numPages || 1);
-    const seq = ++st.renderSeq;
-    const page = await st.pdf.getPage(n);
-    const avail = Math.max(280, scrollEl().clientWidth - 28);
-    const base = page.getViewport({ scale: 1 });
-    const fit = avail / base.width;
-    const cssScale = U.clamp(fit * st.zoom, 0.2, 4);
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const vp = page.getViewport({ scale: cssScale });
-    const canvas = st.canvas;
-    const ctx = canvas.getContext('2d', { alpha: false });
-    canvas.width = Math.max(1, Math.floor(vp.width * dpr));
-    canvas.height = Math.max(1, Math.floor(vp.height * dpr));
-    canvas.style.width = Math.floor(vp.width) + 'px';
-    canvas.style.height = Math.floor(vp.height) + 'px';
-    if (st.renderTask) { try { st.renderTask.cancel(); } catch (e) {} }
-    st.renderTask = page.render({ canvasContext: ctx, viewport: page.getViewport({ scale: cssScale * dpr }) });
-    try { await st.renderTask.promise; } catch (e) { if (e && e.name === 'RenderingCancelledException') return; throw e; }
-    st.renderTask = null;
-    if (seq !== st.renderSeq) return;
-    const tl = st.textLayer;
-    tl.innerHTML = '';
-    tl.style.width = Math.floor(vp.width) + 'px';
-    tl.style.height = Math.floor(vp.height) + 'px';
-    let hasText = false;
-    try {
-      const tc = await page.getTextContent();
-      hasText = tc.items && tc.items.some((it) => it.str && it.str.trim().length);
-      const task = window.pdfjsLib.renderTextLayer({
-        textContent: tc,
-        textContentSource: tc,
-        container: tl,
-        viewport: vp,
-        textDivs: []
-      });
-      if (task && task.promise) await task.promise;
-    } catch (e) { console.warn(e); }
-    st.page = n;
-    updatePageLabel();
-    const ocrKey = String(n);
-    const ocrData = fileOcr(ocrKey);
-    if (ocrData) {
-      renderOcrOverlayOn(tl, ocrData, cssScale, vp.width, vp.height);
-      showHint('');
-    } else if (!hasText) {
+  function recomputeTops() {
+    let top = 0;
+    st.pdfPages.forEach((e) => { e.top = top; top += e.h + PAGE_GAP; });
+  }
+
+  function layoutPdfPages() {
+    const sc = scrollEl();
+    const avail = Math.max(220, (sc ? sc.clientWidth : 600) - 24);
+    st.pdfFit = avail / st.pdfBase.w;
+    st.pdfScale = U.clamp(st.pdfFit * st.pdfZoom, 0.1, 10);
+    st.pdfPages.forEach((e) => {
+      if (e.task) { try { e.task.cancel(); } catch (err) {} e.task = null; }
+      e.renderToken = (e.renderToken || 0) + 1;
+      e.rendering = false;
+      e.rendered = false;
+      e.w = st.pdfBase.w * st.pdfScale;
+      e.h = st.pdfBase.h * st.pdfScale;
+      e.wrap.style.width = Math.round(e.w) + 'px';
+      e.wrap.style.height = Math.round(e.h) + 'px';
+      e.wrap.style.marginBottom = PAGE_GAP + 'px';
+    });
+    recomputeTops();
+  }
+
+  function updatePdfCurrent() {
+    if (!st.pdf || !st.pdfPages.length) return;
+    const sc = scrollEl();
+    if (!sc) return;
+    const mark = sc.scrollTop + Math.min(sc.clientHeight * 0.3, 160);
+    let cur = 1;
+    for (let i = 0; i < st.pdfPages.length; i++) {
+      const e = st.pdfPages[i];
+      if (e.top <= mark) cur = e.num; else break;
+    }
+    if (cur !== st.pdfCurrent) {
+      st.pdfCurrent = cur;
+      updatePageLabel();
+      updateOcrHint();
+      setProgress(progressPercent(currentLocation()), true);
+      scheduleSave();
+    }
+  }
+
+  function updateOcrHint() {
+    if (st.ext !== 'pdf' || !st.pdf) return;
+    const e = st.pdfPages[st.pdfCurrent - 1];
+    if (e && e.rendered && e.empty && !fileOcr(e.num)) {
       showHint('📷 هذه الصفحة صورة بلا نص — اضغط <strong>OCR</strong> لتحويلها إلى نص قابل للتحديد.');
     } else {
       showHint('');
     }
-    if (st.hlEnabled) applyHighlights(tl);
-    setProgress(((n - 1) / Math.max(1, st.numPages)) * 100, true);
+  }
+
+  async function renderPdfPage(e, force) {
+    if (!st.pdf || !e) return;
+    if (e.rendering || (e.rendered && !force)) return;
+    e.rendering = true;
+    const token = (e.renderToken = (e.renderToken || 0) + 1);
+    try {
+      const page = await st.pdf.getPage(e.num);
+      if (token !== e.renderToken) return;
+      const vp1 = page.getViewport({ scale: 1 });
+      if (Math.abs(vp1.width - st.pdfBase.w) > 1 || Math.abs(vp1.height - st.pdfBase.h) > 1) {
+        e.w = vp1.width * st.pdfScale;
+        e.h = vp1.height * st.pdfScale;
+        e.wrap.style.width = Math.round(e.w) + 'px';
+        e.wrap.style.height = Math.round(e.h) + 'px';
+        recomputeTops();
+      }
+      const vp = page.getViewport({ scale: st.pdfScale });
+      const q = pdfQuality();
+      const rvp = page.getViewport({ scale: st.pdfScale * q });
+      const canvas = e.canvas;
+      const ctx = canvas.getContext('2d', { alpha: false });
+      canvas.width = Math.max(1, Math.floor(rvp.width));
+      canvas.height = Math.max(1, Math.floor(rvp.height));
+      canvas.style.width = Math.floor(vp.width) + 'px';
+      canvas.style.height = Math.floor(vp.height) + 'px';
+      e.task = page.render({ canvasContext: ctx, viewport: rvp });
+      await e.task.promise;
+      e.task = null;
+      if (token !== e.renderToken) return;
+      const tl = e.textLayer;
+      tl.innerHTML = '';
+      tl.setAttribute('dir', 'ltr');
+      tl.style.width = Math.floor(vp.width) + 'px';
+      tl.style.height = Math.floor(vp.height) + 'px';
+      tl.style.setProperty('--scale-factor', String(st.pdfScale));
+      const ocr = fileOcr(e.num);
+      if (ocr) {
+        renderOcrOverlayOn(tl, ocr, st.pdfScale, e.w, e.h);
+        e.empty = false;
+      } else {
+        let hasText = false;
+        const tc = await page.getTextContent();
+        if (token !== e.renderToken) return;
+        hasText = !!(tc.items && tc.items.some((it) => it.str && it.str.trim()));
+        try {
+          const task = window.pdfjsLib.renderTextLayer({
+            textContent: tc,
+            textContentSource: tc,
+            container: tl,
+            viewport: vp,
+            textDivs: []
+          });
+          if (task && task.promise) await task.promise;
+        } catch (err) { if (!/cancel/i.test((err && err.name) || '')) console.warn(err); }
+        e.empty = !hasText;
+        if (st.hlEnabled) applyHighlights(tl);
+      }
+      if (token !== e.renderToken) return;
+      e.rendered = true;
+      if (st.pdfCurrent === e.num) updateOcrHint();
+    } catch (err) {
+      if (!/cancel/i.test((err && err.name) || '')) console.warn('render page', e.num, err);
+    } finally {
+      e.rendering = false;
+    }
+  }
+
+  function renderVisiblePages(force) {
+    if (!st.pdf || !st.pdfPages.length) return;
+    const sc = scrollEl();
+    if (!sc) return;
+    const top = sc.scrollTop - sc.clientHeight;
+    const bottom = sc.scrollTop + sc.clientHeight * 2;
+    st.pdfPages.forEach((e) => {
+      if (e.top + e.h >= top && e.top <= bottom) renderPdfPage(e, force);
+    });
+  }
+
+  function setupPdfObserver() {
+    if (st.pdfObserver) { try { st.pdfObserver.disconnect(); } catch (e) {} }
+    st.pdfObserver = new IntersectionObserver((entries) => {
+      entries.forEach((en) => {
+        if (!en.isIntersecting) return;
+        const e = st.pdfPages[Number(en.target.dataset.page) - 1];
+        if (e) renderPdfPage(e);
+      });
+    }, { root: scrollEl(), rootMargin: '900px 0px 1100px 0px', threshold: 0 });
+    st.pdfPages.forEach((e) => st.pdfObserver.observe(e.wrap));
+  }
+
+  function cleanupPdfMemory() {
+    if (!st.pdf || st.pdfPages.length < 8) return;
+    const sc = scrollEl();
+    if (!sc) return;
+    const keepTop = sc.scrollTop - sc.clientHeight * 2.5;
+    const keepBottom = sc.scrollTop + sc.clientHeight * 3.5;
+    st.pdfPages.forEach((e) => {
+      if (!e.rendered || e.rendering) return;
+      const bottom = e.top + e.h;
+      if (bottom < keepTop || e.top > keepBottom) {
+        if (e.task) { try { e.task.cancel(); } catch (err) {} e.task = null; }
+        e.canvas.width = 1;
+        e.canvas.height = 1;
+        e.canvas.style.width = '0px';
+        e.canvas.style.height = '0px';
+        e.textLayer.innerHTML = '';
+        e.rendered = false;
+      }
+    });
+  }
+
+  function goToPage(n) {
+    if (st.ext !== 'pdf' || !st.pdf) return;
+    const num = U.clamp(parseInt(n, 10) || 1, 1, st.numPages);
+    const e = st.pdfPages[num - 1];
+    if (!e) return;
+    scrollEl().scrollTop = Math.max(0, e.top);
+    st.pdfCurrent = num;
+    updatePageLabel();
+    renderPdfPage(e);
+    renderVisiblePages();
     scheduleSave();
   }
 
-  function fileOcr(key) {
-    if (!st.file || !st.file.ocr) return null;
-    return st.file.ocr[key] || null;
+  function zoomTo(z, anchorNum) {
+    if (st.ext !== 'pdf' || !st.pdf) return;
+    const sc = scrollEl();
+    const anchor = anchorNum || st.pdfCurrent;
+    const a0 = st.pdfPages[anchor - 1];
+    const rel = a0 ? U.clamp((sc.scrollTop - a0.top) / Math.max(1, a0.h), 0, 1) : 0;
+    st.pdfZoom = U.clamp(z, 0.5, 4);
+    layoutPdfPages();
+    const a1 = st.pdfPages[anchor - 1];
+    if (a1) sc.scrollTop = a1.top + rel * a1.h;
+    renderVisiblePages(true);
+    updatePageLabel();
+    scheduleSave();
   }
 
   function renderOcrOverlayOn(tl, rec, cssScale, pageW, pageH) {
@@ -232,10 +423,8 @@ window.Viewer = (function () {
       span.style.width = Math.max(4, Math.floor((b.x1 - b.x0) * ratio)) + 'px';
       span.style.height = Math.max(4, Math.floor((b.y1 - b.y0) * ratio)) + 'px';
       span.style.fontSize = Math.max(6, (b.y1 - b.y0) * ratio * 0.85) + 'px';
-      span.style.color = 'transparent';
       span.style.whiteSpace = 'pre';
       span.style.overflow = 'hidden';
-      span.style.position = 'absolute';
       tl.appendChild(span);
     });
   }
@@ -270,9 +459,7 @@ window.Viewer = (function () {
       String(data.tsv).split('\n').forEach((line) => {
         const c = line.split('\t');
         if (c.length >= 12 && c[0] === '5') {
-          const text = c[11] || '';
-          const bbox = { x0: +c[6], y0: +c[7], x1: +c[6] + +c[8], y1: +c[7] + +c[9] };
-          push({ text: text, bbox: bbox });
+          push({ text: c[11] || '', bbox: { x0: +c[6], y0: +c[7], x1: +c[6] + +c[8], y1: +c[7] + +c[9] } });
         }
       });
     }
@@ -281,54 +468,43 @@ window.Viewer = (function () {
 
   async function runOcr() {
     if (!st.file) return;
+    if (st.ext === 'pdf' && st.pdf) return runOcrPage(st.pdfCurrent);
+    if (isImageExt(st.ext) && st.img) return runOcrImage();
+    U.toast('لا يوجد ما يُعالج في هذا النوع', 'warn');
+  }
+
+  async function runOcrPage(n) {
+    const e = st.pdfPages[n - 1];
+    if (!e) return;
     setProgress(0, true);
+    showHint('⏳ جارٍ التعرف الضوئي على الصفحة…');
     try {
-      if (st.ext === 'pdf' && st.pdf) {
-        const n = st.page;
-        const page = await st.pdf.getPage(n);
-        const ocrScale = 2;
-        const vp = page.getViewport({ scale: ocrScale });
-        const cv = document.createElement('canvas');
-        cv.width = Math.max(1, Math.floor(vp.width));
-        cv.height = Math.max(1, Math.floor(vp.height));
-        await page.render({ canvasContext: cv.getContext('2d', { alpha: false }), viewport: vp }).promise;
-        const worker = await getTess();
-        const res = await worker.recognize(cv);
-        const data = res.data || {};
-        const words = wordsFromTesseract(data);
-        st.file.ocr = st.file.ocr || {};
-        st.file.ocr[String(n)] = { text: data.text || '', words: words, scale: ocrScale };
-        st.file.hasText = true;
-        st.file.updatedAt = Date.now();
-        await DB.put('files', st.file);
-        DB.changed();
-        U.toast('تم تحويل الصفحة إلى نص قابل للتحديد ✓', 'ok');
-        const avail = Math.max(280, scrollEl().clientWidth - 28);
-        const cssScale = U.clamp((avail / page.getViewport({ scale: 1 }).width) * st.zoom, 0.2, 4);
-        const vp2 = page.getViewport({ scale: cssScale });
-        renderOcrOverlayOn(st.textLayer, st.file.ocr[String(n)], cssScale, vp2.width, vp2.height);
-        showHint('');
-        if (st.hlEnabled) applyHighlights(st.textLayer);
-      } else if (isImageExt(st.ext) && st.img) {
-        const worker = await getTess();
-        const res = await worker.recognize(st.img);
-        const data = res.data || {};
-        const words = wordsFromTesseract(data);
-        const rec = { text: data.text || '', words: words, scale: 1, w: st.imgNat ? st.imgNat.w : st.img.naturalWidth, h: st.imgNat ? st.imgNat.h : st.img.naturalHeight };
-        st.file.ocr = st.file.ocr || {};
-        st.file.ocr['1'] = rec;
-        st.file.hasText = true;
-        st.file.updatedAt = Date.now();
-        await DB.put('files', st.file);
-        DB.changed();
-        U.toast('تم تحويل الصورة إلى نص قابل للتحديد ✓', 'ok');
-        renderImageOcr(rec);
-      } else {
-        U.toast('لا يوجد ما يُعالج في هذا النوع', 'warn');
-      }
-    } catch (e) {
-      console.error(e);
-      U.toast('تعذّر OCR: ' + (e.message || e), 'error');
+      const page = await st.pdf.getPage(n);
+      const scale = 2;
+      const vp = page.getViewport({ scale: scale });
+      const cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.floor(vp.width));
+      cv.height = Math.max(1, Math.floor(vp.height));
+      await page.render({ canvasContext: cv.getContext('2d', { alpha: false }), viewport: vp }).promise;
+      const worker = await getTess();
+      const res = await worker.recognize(cv);
+      const data = res.data || {};
+      const words = wordsFromTesseract(data);
+      st.file.ocr = st.file.ocr || {};
+      st.file.ocr[String(n)] = { text: data.text || '', words: words, scale: scale };
+      st.file.hasText = true;
+      st.file.updatedAt = Date.now();
+      await DB.put('files', st.file);
+      DB.changed();
+      U.toast('تم تحويل الصفحة إلى نص قابل للتحديد ✓', 'ok');
+      renderOcrOverlayOn(e.textLayer, st.file.ocr[String(n)], st.pdfScale, e.w, e.h);
+      e.empty = false;
+      if (st.hlEnabled) applyHighlights(e.textLayer);
+      updateOcrHint();
+    } catch (err) {
+      console.error(err);
+      U.toast('تعذّر OCR: ' + (err.message || err), 'error');
+      updateOcrHint();
     } finally {
       setProgress(0, false);
     }
@@ -344,6 +520,34 @@ window.Viewer = (function () {
     tl.style.width = displayW + 'px';
     tl.style.height = displayH + 'px';
     renderOcrOverlayOn(tl, rec, (displayW / (rec.w || displayW)) * scale, displayW, displayH);
+  }
+
+  async function runOcrImage() {
+    setProgress(0, true);
+    try {
+      const worker = await getTess();
+      const res = await worker.recognize(st.img);
+      const data = res.data || {};
+      const words = wordsFromTesseract(data);
+      const rec = {
+        text: data.text || '', words: words, scale: 1,
+        w: st.imgNat ? st.imgNat.w : st.img.naturalWidth,
+        h: st.imgNat ? st.imgNat.h : st.img.naturalHeight
+      };
+      st.file.ocr = st.file.ocr || {};
+      st.file.ocr['1'] = rec;
+      st.file.hasText = true;
+      st.file.updatedAt = Date.now();
+      await DB.put('files', st.file);
+      DB.changed();
+      U.toast('تم تحويل الصورة إلى نص قابل للتحديد ✓', 'ok');
+      renderImageOcr(rec);
+    } catch (err) {
+      console.error(err);
+      U.toast('تعذّر OCR: ' + (err.message || err), 'error');
+    } finally {
+      setProgress(0, false);
+    }
   }
 
   async function openDocx(file, loc) {
@@ -406,14 +610,14 @@ window.Viewer = (function () {
     st.rendition = st.book.renderTo(holder, {
       width: '100%',
       height: '100%',
-      flow: 'paginated',
-      spread: 'auto',
+      flow: 'scrolled-doc',
+      spread: 'none',
       allowScriptedContent: false
     });
     const fontSize = (Settings.all().readerFontSize || 100);
     try {
       st.rendition.themes.default({
-        body: { 'font-size': fontSize + '%', 'line-height': '1.6', color: 'var(--text, #16212e)' }
+        body: { 'font-size': fontSize + '%', 'line-height': '1.6' }
       });
     } catch (e) {}
     st.rendition.hooks.content.register((contents) => {
@@ -449,7 +653,7 @@ window.Viewer = (function () {
     const win = doc.defaultView;
     const sel = win.getSelection();
     if (!sel || sel.isCollapsed || !sel.rangeCount) return;
-    const text = String(sel.toString() || '').replace(/\s+/g, ' ').trim();
+    const text = U.cleanSelection(sel.toString());
     if (!text) return;
     const rect = sel.getRangeAt(0).getBoundingClientRect();
     const frame = win.frameElement;
@@ -492,7 +696,10 @@ window.Viewer = (function () {
   function currentLocation() {
     if (!st.file) return null;
     if (st.ext === 'pdf') {
-      return { type: 'pdf', page: st.page, scroll: scrollEl() ? scrollEl().scrollTop : 0 };
+      const e = st.pdfPages[st.pdfCurrent - 1];
+      const sc = scrollEl();
+      const off = e && sc ? sc.scrollTop - e.top : 0;
+      return { type: 'pdf', page: st.pdfCurrent, offset: Math.round(off), scroll: sc ? Math.round(sc.scrollTop) : 0 };
     }
     if (st.ext === 'epub') {
       return {
@@ -506,7 +713,13 @@ window.Viewer = (function () {
 
   function progressPercent(loc) {
     if (!st.file) return 0;
-    if (st.ext === 'pdf' && st.numPages) return ((st.page - 1) / st.numPages) * 100;
+    if (st.ext === 'pdf' && st.numPages) {
+      const sc = scrollEl();
+      const e = st.pdfPages[st.pdfCurrent - 1];
+      let within = 0;
+      if (e && e.h && sc) within = U.clamp((sc.scrollTop - e.top) / e.h, 0, 1);
+      return ((st.pdfCurrent - 1) + within) / st.numPages * 100;
+    }
     if (st.ext === 'epub' && loc && loc.percent) return loc.percent * 100;
     const sc = scrollEl();
     if (sc && sc.scrollHeight > sc.clientHeight) {
@@ -532,8 +745,10 @@ window.Viewer = (function () {
     if (!loc || !st.file) return;
     try {
       if (st.ext === 'pdf' && loc.page) {
-        await renderPage(loc.page);
-        setTimeout(() => { if (scrollEl()) scrollEl().scrollTop = loc.scroll || 0; }, 80);
+        goToPage(loc.page);
+        if (loc.offset && st.pdfPages[loc.page - 1]) {
+          scrollEl().scrollTop = st.pdfPages[loc.page - 1].top + loc.offset;
+        }
       } else if (st.ext === 'epub' && loc.cfi && st.rendition) {
         await st.rendition.display(loc.cfi);
       } else if (scrollEl()) {
@@ -543,24 +758,23 @@ window.Viewer = (function () {
   }
 
   function nextPage() {
-    if (st.ext === 'pdf') renderPage(st.page + 1);
+    if (st.ext === 'pdf' && st.pdf) goToPage(st.pdfCurrent + 1);
     else if (st.ext === 'epub' && st.rendition) st.rendition.next();
     else if (scrollEl()) scrollEl().scrollBy({ top: scrollEl().clientHeight * 0.9, behavior: 'smooth' });
   }
   function prevPage() {
-    if (st.ext === 'pdf') renderPage(st.page - 1);
+    if (st.ext === 'pdf' && st.pdf) goToPage(st.pdfCurrent - 1);
     else if (st.ext === 'epub' && st.rendition) st.rendition.prev();
     else if (scrollEl()) scrollEl().scrollBy({ top: -scrollEl().clientHeight * 0.9, behavior: 'smooth' });
   }
   function zoomBy(delta) {
-    if (st.ext !== 'pdf') return;
-    st.zoom = U.clamp(st.zoom + delta, 0.5, 3);
-    renderPage(st.page);
+    if (st.ext !== 'pdf' || !st.pdf) return;
+    zoomTo(st.pdfZoom + delta);
   }
 
   let lastEmit = { text: '', t: 0 };
   function emit(text, rect) {
-    const clean = String(text || '').trim();
+    const clean = U.cleanSelection(text);
     if (!clean) return;
     const now = Date.now();
     if (clean === lastEmit.text && now - lastEmit.t < 1400) return;
@@ -576,32 +790,35 @@ window.Viewer = (function () {
     }));
   }
 
+  function handleContainerSelection() {
+    const c = st.container;
+    if (!c) return;
+    setTimeout(() => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || !sel.rangeCount) return;
+      const text = sel.toString();
+      if (!text || !text.trim()) return;
+      const range = sel.getRangeAt(0);
+      if (!c.contains(range.commonAncestorContainer)) return;
+      const rect = range.getBoundingClientRect();
+      emit(text, { left: rect.left, top: rect.top, width: rect.width, height: rect.height, bottom: rect.bottom });
+    }, 30);
+  }
+
   function bindContainer() {
     const c = st.container;
     if (!c || c._bound) return;
     c._bound = true;
-    const handler = () => {
-      setTimeout(() => {
-        const sel = window.getSelection();
-        if (!sel || sel.isCollapsed || !sel.rangeCount) return;
-        const text = String(sel.toString() || '').replace(/\s+/g, ' ').trim();
-        if (!text) return;
-        const range = sel.getRangeAt(0);
-        if (!c.contains(range.commonAncestorContainer)) return;
-        const rect = range.getBoundingClientRect();
-        emit(text, { left: rect.left, top: rect.top, width: rect.width, height: rect.height, bottom: rect.bottom });
-      }, 30);
-    };
-    c.addEventListener('pointerup', handler);
-    c.addEventListener('touchend', handler);
+    c.addEventListener('pointerup', handleContainerSelection);
+    c.addEventListener('touchend', handleContainerSelection);
     document.addEventListener('selectionchange', U.debounce(() => {
       if (st.ext === 'epub') return;
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed || !sel.rangeCount) return;
-      const text = String(sel.toString() || '').replace(/\s+/g, ' ').trim();
-      if (!text) return;
+      const text = sel.toString();
+      if (!text || !text.trim()) return;
       const range = sel.getRangeAt(0);
-      if (!c.contains(range.commonAncestorContainer)) return;
+      if (!st.container || !st.container.contains(range.commonAncestorContainer)) return;
       const rect = range.getBoundingClientRect();
       emit(text, { left: rect.left, top: rect.top, width: rect.width, height: rect.height, bottom: rect.bottom });
     }, 420));
@@ -613,9 +830,66 @@ window.Viewer = (function () {
       const r = mark.getBoundingClientRect();
       emit(mark.dataset.word || mark.textContent, { left: r.left, top: r.top, width: r.width, height: r.height, bottom: r.bottom });
     });
-    const scroll = scrollEl();
-    const onScroll = U.debounce(() => scheduleSave(), 900);
-    scroll.addEventListener('scroll', onScroll, { passive: true });
+    const sc = scrollEl();
+    const onScroll = U.debounce(() => {
+      if (st.ext === 'pdf') {
+        updatePdfCurrent();
+        cleanupPdfMemory();
+      }
+      scheduleSave();
+    }, 130);
+    sc.addEventListener('scroll', onScroll, { passive: true });
+    setupPinch(sc);
+  }
+
+  function setupPinch(sc) {
+    if (!sc || sc._pinchBound) return;
+    sc._pinchBound = true;
+    let startDist = 0;
+    let startZoom = 1;
+    let preview = 1;
+    const dist = (t) => Math.sqrt(Math.pow(t[0].clientX - t[1].clientX, 2) + Math.pow(t[0].clientY - t[1].clientY, 2));
+    sc.addEventListener('touchstart', (e) => {
+      if (st.ext !== 'pdf' || e.touches.length !== 2) return;
+      startDist = dist(e.touches);
+      startZoom = st.pdfZoom;
+      preview = 1;
+    }, { passive: true });
+    sc.addEventListener('touchmove', (e) => {
+      if (st.ext !== 'pdf' || !startDist || e.touches.length !== 2) return;
+      e.preventDefault();
+      preview = U.clamp(dist(e.touches) / startDist, 0.4, 3);
+      if (st.pdfPagesEl) st.pdfPagesEl.style.transform = 'scale(' + preview.toFixed(3) + ')';
+    }, { passive: false });
+    const endPinch = () => {
+      if (st.ext !== 'pdf' || !startDist) return;
+      const factor = preview;
+      startDist = 0;
+      preview = 1;
+      if (st.pdfPagesEl) st.pdfPagesEl.style.transform = '';
+      if (Math.abs(factor - 1) > 0.03) zoomTo(startZoom * factor);
+    };
+    sc.addEventListener('touchend', endPinch);
+    sc.addEventListener('touchcancel', endPinch);
+    sc.addEventListener('gesturestart', (e) => {
+      if (st.ext !== 'pdf') return;
+      e.preventDefault();
+      startZoom = st.pdfZoom;
+      preview = 1;
+    });
+    sc.addEventListener('gesturechange', (e) => {
+      if (st.ext !== 'pdf') return;
+      e.preventDefault();
+      preview = U.clamp(e.scale, 0.4, 3);
+      if (st.pdfPagesEl) st.pdfPagesEl.style.transform = 'scale(' + preview.toFixed(3) + ')';
+    });
+    sc.addEventListener('gestureend', () => {
+      if (st.ext !== 'pdf' || preview === 1) return;
+      const factor = preview;
+      preview = 1;
+      if (st.pdfPagesEl) st.pdfPagesEl.style.transform = '';
+      if (Math.abs(factor - 1) > 0.03) zoomTo(startZoom * factor);
+    });
   }
 
   async function savedWordSet() {
@@ -628,18 +902,19 @@ window.Viewer = (function () {
   }
 
   async function applyHighlights(root) {
-    let target = root;
-    if (!target) {
-      target = st.ext === 'epub' ? null : st.container;
-    }
-    if (!target || !st.hlEnabled) return;
+    if (!st.hlEnabled) return;
+    let targets = [];
+    if (root) targets = [root];
+    else if (st.ext === 'pdf') targets = st.pdfPages.filter((e) => e.rendered && e.textLayer.childNodes.length).map((e) => e.textLayer);
+    else if (st.container) targets = [st.container];
+    if (!targets.length) return;
     let list;
     try { list = await savedWordSet(); } catch (e) { return; }
     if (!list.size) return;
     const arr = Array.from(list).filter((w) => w.length > 1).sort((a, b) => b.length - a.length);
     if (!arr.length) return;
     const re = new RegExp('\\b(' + arr.map(U.escapeRe).join('|') + ')\\b', 'gi');
-    highlightIn(target, re);
+    targets.forEach((t) => highlightIn(t, re));
   }
 
   function highlightIn(root, re) {
@@ -665,7 +940,8 @@ window.Viewer = (function () {
     const text = node.nodeValue;
     const parent = node.parentNode;
     if (!parent) return;
-    const frag = (node.ownerDocument || document).createDocumentFragment();
+    const doc = node.ownerDocument || document;
+    const frag = doc.createDocumentFragment();
     let last = 0;
     let m;
     let found = false;
@@ -673,8 +949,8 @@ window.Viewer = (function () {
     while ((m = re.exec(text)) !== null) {
       if (!m[0]) { re.lastIndex++; continue; }
       found = true;
-      if (m.index > last) frag.appendChild((node.ownerDocument || document).createTextNode(text.slice(last, m.index)));
-      const mark = (node.ownerDocument || document).createElement('mark');
+      if (m.index > last) frag.appendChild(doc.createTextNode(text.slice(last, m.index)));
+      const mark = doc.createElement('mark');
       mark.className = 'hl';
       mark.dataset.word = m[0].toLowerCase();
       mark.textContent = m[0];
@@ -682,8 +958,16 @@ window.Viewer = (function () {
       last = m.index + m[0].length;
     }
     if (!found) return;
-    if (last < text.length) frag.appendChild((node.ownerDocument || document).createTextNode(text.slice(last)));
+    if (last < text.length) frag.appendChild(doc.createTextNode(text.slice(last)));
     parent.replaceChild(frag, node);
+  }
+
+  function unwrapHighlights(root) {
+    if (!root || !root.querySelectorAll) return;
+    const doc = root.ownerDocument || document;
+    Array.prototype.forEach.call(root.querySelectorAll('mark.hl'), (m) => {
+      if (m.parentNode) m.parentNode.replaceChild(doc.createTextNode(m.textContent), m);
+    });
   }
 
   async function toggleHighlights() {
@@ -692,28 +976,17 @@ window.Viewer = (function () {
     if (btn) btn.classList.toggle('primary', st.hlEnabled);
     if (st.hlEnabled) {
       U.toast('الإبراز مفعّل');
-      if (st.ext === 'epub' && st.rendition) {
-        try { await st.rendition.display(); } catch (e) {}
-      } else {
-        applyHighlights();
-      }
+      if (st.ext === 'epub' && st.rendition) { try { await st.rendition.display(); } catch (e) {} }
+      else applyHighlights();
     } else {
       U.toast('الإبراز متوقف');
-      U.qsa('mark.hl').forEach((m) => {
-        const t = document.createTextNode(m.textContent);
-        if (m.parentNode) m.parentNode.replaceChild(t, m);
-      });
-      if (st.textLayer) {
-        renderCurrentTextLayerHighlightsOff();
+      if (st.ext === 'pdf') {
+        st.pdfPages.forEach((e) => { if (e.rendered) unwrapHighlights(e.textLayer); });
+      } else if (st.ext === 'epub' && st.rendition) {
+        try { await st.rendition.display(); } catch (e) {}
+      } else if (st.container) {
+        unwrapHighlights(st.container);
       }
-    }
-  }
-
-  async function renderCurrentTextLayerHighlightsOff() {
-    if (st.ext === 'pdf' && st.pdf) {
-      await renderPage(st.page);
-    } else if (st.ext === 'epub' && st.rendition) {
-      try { await st.rendition.display(); } catch (e) {}
     }
   }
 
@@ -723,8 +996,8 @@ window.Viewer = (function () {
     try {
       if (st.ext === 'epub' && st.rendition) {
         const contents = st.rendition.getContents();
-        if (contents && contents[0] && contents[0].document) {
-          txt = contents[0].document.body ? contents[0].document.body.innerText : '';
+        if (contents && contents[0] && contents[0].document && contents[0].document.body) {
+          txt = contents[0].document.body.innerText;
         }
       } else {
         txt = st.container.innerText || '';
@@ -736,20 +1009,22 @@ window.Viewer = (function () {
   }
 
   const onResize = U.debounce(() => {
-    if (st.ext === 'pdf' && st.pdf && st.canvas) {
-      renderPage(st.page);
+    if (st.ext === 'pdf' && st.pdf) {
+      zoomTo(st.pdfZoom);
+    } else if (st.ext === 'epub' && st.rendition) {
+      try { st.rendition.resize(); } catch (e) {}
     }
   }, 350);
   window.addEventListener('resize', onResize);
 
   function getState() {
-    return { file: st.file, ext: st.ext, page: st.page, numPages: st.numPages };
+    return { file: st.file, ext: st.ext, page: st.pdfCurrent, numPages: st.numPages };
   }
   function currentFile() { return st.file; }
 
   return {
-    open, close, goTo, nextPage, prevPage, zoomBy, runOcr, applyHighlights,
-    toggleHighlights, getContext, currentLocation, saveProgress,
+    open, close, goTo, goToPage, nextPage, prevPage, zoomBy, runOcr,
+    applyHighlights, toggleHighlights, getContext, currentLocation, saveProgress,
     currentFile, getState, updateToolbar
   };
 })();

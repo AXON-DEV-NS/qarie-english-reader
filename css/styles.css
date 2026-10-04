@@ -287,32 +287,59 @@ kbd {
   max-width: 30vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tool-group { display: flex; align-items: center; gap: 2px; }
-.page-ind { font-size: 0.8rem; color: var(--muted); white-space: nowrap; padding: 0 4px; }
+.page-ind { font-size: 0.8rem; color: var(--muted); white-space: nowrap; padding: 0 4px; direction: ltr; unicode-bidi: isolate; }
+.page-input {
+  width: 56px; min-height: 34px; padding: 4px 6px; text-align: center;
+  direction: ltr; border-radius: 8px; background: var(--surface);
+  border: 1px solid var(--border); font-size: 0.82rem;
+}
+.page-input::-webkit-outer-spin-button, .page-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.page-input { -moz-appearance: textfield; appearance: textfield; }
 .reader-progress { height: 4px; background: var(--border); border-radius: 999px; overflow: hidden; margin-bottom: 8px; }
 #reader-progress-bar { height: 100%; width: 0; background: var(--primary); transition: width .2s; }
-.reader-scroll { min-height: 50vh; overflow-x: auto; }
 
-#view-reader.active { display: flex; flex-direction: column; }
-#view-reader.active .reader-scroll { flex: 1; }
+#view-reader.active { display: flex; flex-direction: column; height: calc(100vh - var(--topbar-h) - 30px); }
+#view-reader.active .reader-scroll {
+  flex: 1 1 auto; min-height: 0;
+  overflow-y: auto; overflow-x: auto;
+  touch-action: pan-y pinch-zoom;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+@media (max-width: 767px) {
+  #view-reader.active { height: calc(100vh - var(--topbar-h) - var(--bottomnav-h) - 26px); }
+}
 
 .viewer-container { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.viewer-container.pdf-mode { display: block; direction: ltr; }
+.pdf-pages { width: max-content; min-width: 100%; margin: 0 auto; padding: 6px 0 20px; direction: ltr; }
 .pdf-page-wrap {
-  position: relative; background: #fff; box-shadow: var(--shadow); border-radius: 4px;
-  overflow: hidden;
+  position: relative; margin: 0 auto 14px; background: #fff;
+  box-shadow: var(--shadow); border-radius: 3px; overflow: hidden;
 }
 .pdf-canvas { display: block; }
 .textLayer {
   position: absolute; inset: 0; overflow: hidden; line-height: 1;
-  text-align: initial; text-size-adjust: none; forced-color-adjust: none;
-  transform-origin: 0 0; z-index: 2;
+  text-align: initial; -webkit-text-size-adjust: none; text-size-adjust: none;
+  forced-color-adjust: none; transform-origin: 0 0; z-index: 2;
+  direction: ltr; letter-spacing: normal; word-spacing: normal; text-rendering: auto;
 }
 .textLayer span, .textLayer br {
-  color: transparent; position: absolute; white-space: pre; cursor: text;
-  transform-origin: 0% 0%;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%;
+  letter-spacing: normal !important; word-spacing: normal !important; text-rendering: auto;
+  border: 0; margin: 0;
 }
+.textLayer span.markedContent { top: 0; height: 0; }
 .textLayer ::selection { background: rgba(45, 212, 191, 0.4); }
-.textLayer .hl, .textLayer mark.hl { background: color-mix(in srgb, var(--hl) 75%, transparent); border-radius: 3px; }
+.textLayer br::selection { background: transparent; }
+.textLayer mark.hl { background: color-mix(in srgb, var(--hl) 75%, transparent); border-radius: 3px; }
 .img-text-layer { z-index: 2; }
+
+@media (max-width: 767px) {
+  .docx-wrapper, .docx-wrapper > section.docx, .docx { max-width: 100% !important; }
+}
 
 .txt-view {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
@@ -326,9 +353,10 @@ kbd {
 .img-view { max-width: 100%; height: auto; border-radius: 10px; box-shadow: var(--shadow); }
 
 .epub-holder {
-  width: 100%; height: calc(100vh - var(--topbar-h) - 170px);
+  width: 100%; max-width: 900px; margin: 0 auto;
+  height: calc(100vh - var(--topbar-h) - 200px);
   min-height: 380px; background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); overflow: hidden;
+  border-radius: var(--radius); overflow: auto;
 }
 
 mark.hl {

@@ -321,12 +321,32 @@ window.U = (function () {
   function stripMarkup(s) {
     return String(s || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
   }
+  function cleanSelection(raw) {
+    let t = String(raw || '');
+    t = t.replace(/[\u00AD\u200B-\u200D\u2060\uFEFF]/g, '');
+    t = t.replace(/\uFB03/g, 'ffi')
+      .replace(/\uFB04/g, 'ffl')
+      .replace(/\uFB00/g, 'ff')
+      .replace(/\uFB01/g, 'fi')
+      .replace(/\uFB02/g, 'fl')
+      .replace(/\uFB05/g, 'st')
+      .replace(/\uFB06/g, 'st');
+    t = t.replace(/-\s*[\r\n\u2028\u2029]+\s*/g, '');
+    t = t.replace(/[\r\n\t\u2028\u2029]+/g, ' ');
+    t = t.replace(/\s+/g, ' ');
+    t = t.replace(/\s+([,.;:!?%\u060C\u061B\u061F)\]])/g, '$1');
+    if (/[A-Za-z]/.test(t) && /[\u0600-\u06FF]/.test(t)) {
+      t = t.replace(/[\u0600-\u06FF\u061C\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+/g, ' ');
+      t = t.replace(/\s+/g, ' ').replace(/^[\s\-:;,.\u2013\u2014]+|[\s\-:;,.\u2013\u2014]+$/g, '');
+    }
+    return t.trim();
+  }
   return {
     uid, qs, qsa, el, esc, escapeRe, normalizeWord, countWords, classify,
     todayKey, dateKeyOffset, formatDate, formatBytes, debounce, sleep, clamp,
     toast, modal, confirmBox, promptBox, download, readAsText, readAsDataURL,
     readAsArrayBuffer, dataURLToBlob, chunkText, decodeEntities, extOf,
     syllables, translitWord, translitText, getContextAround, posArabic,
-    isMobile, stripMarkup
+    isMobile, stripMarkup, cleanSelection
   };
 })();

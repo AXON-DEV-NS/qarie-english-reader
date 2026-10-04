@@ -1,0 +1,21 @@
+{
+  "name": "new-folder-(2)",
+  "version": "1.0.0",
+  "description": "موقع ويب كامل (PWA) لقراءة ملفاتك الإنجليزية وتعلّمها: تحديد أي كلمة/جملة/فقرة، شرح بالعربية، نطق مكتوب بالعربية مع التشكيل، صوت تعليمي، قاموس شخصي، بطاقات مراجعة بالتكرار المتباعد، اختبارات، إحصائيات، ومزامنة سحابية اختيارية.",
+  "main": "sw.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AXON-DEV-NS/qarie-english-reader.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/AXON-DEV-NS/qarie-english-reader/issues"
+  },
+  "homepage": "https://github.com/AXON-DEV-NS/qarie-english-reader#readme"
+}
