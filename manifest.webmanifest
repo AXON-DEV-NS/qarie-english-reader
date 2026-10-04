@@ -1,0 +1,25 @@
+{
+  "name": "قارئي — تعلّم الإنجليزية من ملفاتك",
+  "short_name": "قارئي",
+  "description": "ارفع PDF أو Word أو TXT أو EPUB أو صورة، وحدّد أي كلمة أو جملة لترجمتها ونطقها وحفظها مع مراجعة ذكية بالتكرار المتباعد.",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./index.html#/library",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b1220",
+  "theme_color": "#0d9488",
+  "categories": ["education", "books", "productivity"],
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-180.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "مكتبتي", "short_name": "مكتبتي", "url": "./index.html#/library" },
+    { "name": "مراجعة البطاقات", "short_name": "مراجعة", "url": "./index.html#/study" },
+    { "name": "قاموسي", "short_name": "قاموسي", "url": "./index.html#/dictionary" }
+  ]
+}
